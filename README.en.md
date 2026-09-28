@@ -43,6 +43,13 @@ DSH's side chat can only live inside the DSH main window. The moment you switch 
 
 ## Screenshots
 
+**The entry point** — the **浮窗** (float) button to the right of the DSH main window's composer
+(slot `conversation.input.right`, `order: 40`). It sits to the left of the model selector and follows
+DSH's theme: `borderRadius: 8px`, 26 px tall, a `1px solid var(--dsw-alias-border-l1)` border, 12 px text.
+It has distinct hover and pressed backgrounds, and turns red on error (`--dsw-alias-state-error-primary`):
+
+![Float button](docs/assets/01-composer-button.png)
+
 **The floating window over other applications** — the DSH main window's conversation on the left, the float sitting independently to its right. The title bar carries five hand-drawn buttons (clear cache / new thread / pin / minimize / close), and the composer at the bottom has inherited the current session's context:
 
 ![Floating window](docs/assets/02-float-window.png)
@@ -58,8 +65,6 @@ DSH's side chat can only live inside the DSH main window. The moment you switch 
 **Settings page, lower half** — the three "Behavior" toggles (close window ends the thread / show session title in the title bar / Esc closes the window) and the "Cache & logs" card. Note that the cache line is a **live reading** (browser cache 4 B · log 381.5 KB at capture time); the numbers come from the host's `GET /dsh-float-chat/stats`, and the **清理** button here does exactly the same thing as the one in the title bar. At the bottom sit **恢复默认设置** (restore defaults) and **刷新** (refresh):
 
 ![Settings lower half](docs/assets/05-settings-behavior-cache.png)
-
-> **TODO**: one screenshot is still missing — the **浮窗** button to the right of the composer (the entry point). See `docs/assets/README.md` for how to add it.
 
 ### Demo
 
@@ -449,7 +454,7 @@ dsh-float-chat/
 │       ├── clean-pending.txt  #   pending-clean marker
 │       └── float-settings.json#   local settings
 ├── docs/
-│   ├── assets/                #   screenshots (2 of the float + 2 of the settings page)
+│   ├── assets/                #   screenshots (1 entry point + 2 of the float + 2 of the settings page)
 │   └── plugin-blurb.md        #   blurb / keywords / topics / badge material
 ├── release/
 │   ├── v0.4.0-release-notes.md        # release notes, tag plan, submission copy

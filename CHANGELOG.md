@@ -16,12 +16,12 @@
 
 ### TODO
 
-- 补充 `docs/assets/01-composer-button.png`——唯一还缺的一张截图（悬浮窗已收 4 张）。
 - 为宿主侧路由补自动化测试（当前**没有**任何自动化测试）。
 - 为 macOS / Linux 提供窗口实现或明确的替代方案（当前**仅 Windows**）。
 
 ### 注
 
+- 截图已收齐 5 张（触发入口 / 浮窗整屏 / 浮窗近景 / 设置页上下半），无待补。
 - ~~补充 `dsh.compatibility` 字段~~ —— **作废**。该字段不存在于 DSH 的插件清单中，
   写了也不会被读；详见 [CONTRIBUTING.md](./CONTRIBUTING.md#关于-dshcompatibility)。
 

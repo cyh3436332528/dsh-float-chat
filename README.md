@@ -46,6 +46,13 @@ DSH 的侧边对话（side chat）只能待在 DSH 主窗口里。一旦你切�
 
 ## 效果截图
 
+**触发入口**——DSH 主窗口输入框右侧的 **浮窗** 按钮（插槽 `conversation.input.right`，`order: 40`）。
+它在模型选择器左边，样式跟着 DSH 的主题走：`borderRadius: 8px`、高 26 px、
+`1px solid var(--dsw-alias-border-l1)` 描边，文字 12 px。鼠标悬停与按下都有独立底色，
+报错时文字变红（`--dsw-alias-state-error-primary`）：
+
+![浮窗按钮](docs/assets/01-composer-button.png)
+
 **悬浮窗压在其他应用之上**——左侧是 DSH 主窗口的对话，浮窗独立在它右边，  
 标题栏五颗自绘按钮（清理缓存 / 新对话 / 置顶 / 最小化 / 关闭），底部是继承了当前会话上下文的输入框：
 
@@ -69,9 +76,6 @@ DSH 的侧边对话（side chat）只能待在 DSH 主窗口里。一旦你切�
 底部还有「恢复默认设置」与「刷新」：
 
 ![设置页下半](docs/assets/05-settings-behavior-cache.png)
-
-> **TODO**：还剩一张——输入框右侧的「浮窗」按钮（触发入口）。
-> 补充方式见 `docs/assets/README.md`。
 
 ### 实机演示
 
@@ -476,7 +480,7 @@ dsh-float-chat/
 │       ├── clean-pending.txt  #   欠清标记
 │       └── float-settings.json#   本机设置
 ├── docs/
-│   ├── assets/                #   效果截图（悬浮窗 2 张 + 设置页 2 张）
+│   ├── assets/                #   效果截图（触发入口 1 张 + 悬浮窗 2 张 + 设置页 2 张）
 │   └── plugin-blurb.md        #   简介 / 关键词 / Topics / 徽章素材
 ├── release/
 │   ├── v0.4.0-release-notes.md        # Release 说明、tag 方案、投稿文案
