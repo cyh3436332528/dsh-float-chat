@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: DSH 本体的问题
+    url: https://github.com/deepseek-ai/deepseek-harness/issues
+    about: 如果问题出在 DSH 自身（界面、会话机制、插件加载、渲染器能力头），请提到官方仓库，而不是本项目。
+  - name: 插件市场 / 目录索引的问题
+    url: https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/issues
+    about: 如果问题与本插件在插件市场里的收录、分类或安装命令有关，请提到 awesome-dsh-plugin。
+  - name: 即用即焚 / 删除对话失败
+    url: https://github.com/cyh3436332528/dsh-plugin-session-purge/issues
+    about: 浮窗的「即用即焚」复用 dsh-plugin-session-purge 的删除接口；如果删除本身失败，请提到那个仓库。
+  - name: 安全问题（请勿公开）
+    url: https://github.com/cyh3436332528/dsh-float-chat/security/advisories/new
+    about: 涉及凭据泄露、越权访问本地服务、清理范围超出预期等安全问题，请走私密渠道，不要开公开 Issue。

@@ -1,0 +1,44 @@
+{
+  "name": "dsh-float-chat",
+  "version": "0.4.0",
+  "description": "Pops the DSH side chat into a free-floating, always-on-top desktop window usable over any other application, with its own 悬浮窗 settings page (appearance light / dark / follow-DSH / follow-Windows, always-on-top, remembered geometry, default size, opacity, close-window-ends-the-thread, session title in the title bar, Esc to close) and a cache-and-log cleanup card. One package, three halves: host.js serves the page, the settings, the theme channel and the cache routes, and owns the window process; client.js adds the 浮窗 composer button and the 悬浮窗 settings page; window/ is the WinForms + WebView2 program that draws the frameless window.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./host.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "host.js",
+    "client.js",
+    "page/",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "float-window",
+    "always-on-top",
+    "chat"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cyh3436332528/dsh-float-chat.git"
+  },
+  "homepage": "https://github.com/cyh3436332528/dsh-float-chat#readme",
+  "bugs": {
+    "url": "https://github.com/cyh3436332528/dsh-float-chat/issues"
+  },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": ["@deepseek-ai/dsh-client-ui-conversation"]
+    }
+  }
+}

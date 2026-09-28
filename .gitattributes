@@ -1,0 +1,30 @@
+# 统一换行符：仓库内一律 LF，检出时也保持 LF，避免跨平台 diff 噪声
+* text=auto eol=lf
+
+# 图片按二进制处理
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.svg text eol=lf
+
+# ══════════════════════════════════════════════════════════════════════════
+#  window/ 的二进制产物
+# ══════════════════════════════════════════════════════════════════════════
+# 它们是**有意入库**的（用户不必自备 csc.exe 与 WebView2 SDK 即可直接运行），
+# 必须标记为 binary：否则 git 会在检出时按文本处理，破坏 PE 文件。
+#
+# 注意：`* text=auto` 这条规则不会碰二进制文件（git 自己会探测），
+# 这里显式声明是为了防止将来有人改上面的规则时误伤。
+*.exe binary
+*.dll binary
+*.pdb binary
+
+# C# 源码按文本处理，LF 归一
+*.cs text eol=lf
+
+# YAML / JSON / Markdown 明确按文本
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.md text eol=lf

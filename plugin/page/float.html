@@ -1,0 +1,1616 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>悬浮窗</title>
+  <style>
+    /* Visual language copied from dsh-better-sidebar's side-chat panel
+       (SideChatView.module.css): DSH alias tokens, 16px capsule composer with a
+       circular accent send button, right-aligned user bubbles, full-width
+       assistant prose, and one collapsible line chrome for thinking / tools. */
+    :root {
+      color-scheme: dark;
+      --bg: #0f1115;
+      --layer: #1b1b1c;
+      --hover: rgba(255, 255, 255, .06);
+      --hairline: rgba(255, 255, 255, .10);
+      --bubble: rgba(255, 255, 255, .07);
+      --text: #ebeef2;
+      --text-2: #a9b0b8;
+      --text-3: #7c848c;
+      --accent: #4176e6;
+      --accent-hover: #7aaaff;
+      --accent-ink: #fff;
+      --danger: #ef4444;
+      --shadow: 0 2px 10px rgba(0, 0, 0, .28);
+      --radius-card: 16px;
+      --ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
+      --mono: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Consolas, "Courier New", monospace;
+    }
+    /* 浅色外观：DSH 浅色档的同一套语义令牌（白底 + 浅灰卡片层）。
+       强调色不变，但悬停必须往深里走（深色档的 #7aaaff 在白底上等于没有反馈），
+       错误色也要压深一档，否则 #ef4444 落在白底上读不清。 */
+    html[data-theme='light'] {
+      color-scheme: light;
+      --bg: #fff;
+      --layer: #f5f6f7;
+      --hover: rgba(0, 0, 0, .05);
+      --hairline: rgba(0, 0, 0, .10);
+      --bubble: #eef1f5;
+      --text: #0f1115;
+      --text-2: #61666b;
+      --text-3: #8a9099;
+      --accent: #4176e6;
+      --accent-hover: #2f5fd0;
+      --accent-ink: #fff;
+      --danger: #d92d20;
+      --shadow: 0 2px 10px rgba(15, 17, 21, .10);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+      color: var(--text);
+      /* DSH 的字体栈与行高（--dsw-font-family / --dsw-font-s-14：14px/22px） */
+      font: 14px/22px -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
+      overflow: hidden;
+      /* 深/浅色切换时整块底色渐变过去，避免系统换主题的瞬间闪一下 */
+      transition: background-color 140ms ease-out, color 140ms ease-out;
+      /* the native window rounds the outer frame; keep the content inside it */
+      border-radius: inherit;
+    }
+
+    /* ── header (only used when the page is opened outside the native window) ── */
+    .bar {
+      -webkit-app-region: drag;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex: none;
+      min-height: 36px;
+      padding: 4px 8px 4px 12px;
+      border-bottom: 1px solid var(--hairline);
+      user-select: none;
+    }
+    html[data-native='1'] .bar { display: none; }
+    .title { font-size: 13px; font-weight: 600; letter-spacing: .01em; }
+    .grow { flex: 1; }
+    .icon {
+      -webkit-app-region: no-drag;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      padding: 0;
+      border: none;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text-2);
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background-color 100ms ease-out, color 100ms ease-out;
+    }
+    .icon:hover { background: var(--hover); color: var(--text); }
+    .icon[aria-pressed='true'] { color: var(--accent); }
+    .pulse { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); }
+    .pulse[data-state='running'] { background: var(--accent); animation: blink 1.1s ease-in-out infinite; }
+    .pulse[data-state='error'] { background: var(--danger); }
+    @keyframes blink { 50% { opacity: .25; } }
+
+    /* ── thread bar (history picker + ephemeral switch) ── */
+    .threadbar { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 14px 4px; }
+    .menu { position: relative; max-width: 68%; }
+    .menuPanel {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      /* stays modest like the original panel: only the window being narrower
+         than the panel changes its width, so a big window does not blow it up */
+      width: min(280px, calc(100vw - 24px));
+      max-height: min(340px, calc(100vh - 140px));
+      overflow-y: auto;
+      padding: 6px;
+      border: 1px solid var(--hairline);
+      border-radius: 14px;
+      background: var(--layer);
+      box-shadow: var(--shadow);
+      z-index: 30;
+    }
+    .menuItem {
+      display: block;
+      width: 100%;
+      padding: 6px 10px;
+      border: none;
+      border-radius: 9px;
+      background: transparent;
+      color: var(--text-2);
+      font: 12px/18px var(--ui);
+      text-align: left;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      cursor: pointer;
+    }
+    .menuItem:hover { background: var(--hover); color: var(--text); }
+    .menuItem.is-current { color: var(--text); font-weight: 600; }
+    .menuItem.is-danger { color: var(--danger); }
+    .menuRow { display: flex; align-items: center; gap: 4px; overflow: hidden; }
+    .menuSave {
+      flex: none;
+      padding: 4px 10px;
+      border: none;
+      border-radius: 8px;
+      background: var(--accent);
+      color: var(--accent-ink);
+      font: 12px/18px var(--ui);
+      cursor: pointer;
+    }
+    .menuSave:hover { background: var(--accent-hover); }
+    .menuRow .menuItem { flex: 1; min-width: 0; }
+    .menuIcon {
+      flex: none;
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      border: none;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--text-3);
+      font: 12px/1 var(--ui);
+      cursor: pointer;
+    }
+    .menuIcon:hover { background: var(--hover); color: var(--text); }
+    .menuInput {
+      flex: 1;
+      min-width: 0;
+      padding: 4px 8px;
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      background: transparent;
+      color: var(--text);
+      font: 12px/18px var(--ui);
+      outline: none;
+    }
+    .menuInput:focus { border-color: var(--accent); }
+    /* Hover detail for a thread row: the menu truncates names, this shows it whole
+       (the same hover-detail idea the cost meter uses beside the balance). */
+    .tipCard {
+      position: fixed;
+      z-index: 40;
+      max-width: 320px;
+      padding: 8px 11px;
+      border: 1px solid var(--hairline);
+      border-radius: 12px;
+      background: var(--layer);
+      box-shadow: var(--shadow);
+      color: var(--text);
+      font-size: 12px;
+      line-height: 1.65;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 120ms ease-out;
+    }
+    .tipCard[data-show='1'] { opacity: 1; }
+    .tipTitle { font-weight: 600; overflow-wrap: anywhere; }
+    .tipMeta { margin-top: 3px; color: var(--text-3); }
+    .menuSep { height: 1px; margin: 5px 4px; background: var(--hairline); }
+    .menuEmpty { padding: 6px 10px; color: var(--text-3); font-size: 12px; }
+    .chip {
+      padding: 4px 12px;
+      border: 1px solid var(--hairline);
+      border-radius: 999px;
+      background: transparent;
+      color: var(--text-3);
+      font: 13px/20px var(--ui);
+      cursor: pointer;
+      transition: color 100ms ease-out, border-color 100ms ease-out, background-color 100ms ease-out;
+    }
+    .chip:hover { color: var(--text); }
+    .chip[aria-pressed='true'] { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 55%, transparent); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+
+    /* ── transcript ── */
+    .logWrap { flex: 1; min-height: 0; position: relative; display: flex; }
+    .jump {
+      position: absolute;
+      left: 50%;
+      bottom: 10px;
+      transform: translateX(-50%);
+      background: var(--layer);
+      box-shadow: var(--shadow);
+      color: var(--text-2);
+    }
+    .jump:hover { color: var(--text); }
+    .log { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 16px 6px; display: flex; flex-direction: column; gap: 10px; }
+    /* 空对话时的提示语：它是“对话框”里唯一的字，按窗口比例给足字号（输入框的
+       placeholder 另有尺寸，见下面的 textarea::placeholder，别混为一谈）。 */
+    .empty { margin: auto; padding: 18px 10px; text-align: center; color: var(--text-3); font-size: 15px; line-height: 1.75; }
+
+    .msg { max-width: 88%; border-radius: var(--radius-card); padding: 9px 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .msg-user { align-self: flex-end; background: var(--bubble); border-bottom-right-radius: 5px; }
+    .msg-bot { line-height: 24px; align-self: stretch; max-width: 100%; padding: 1px 0; background: transparent; }
+    .msg-bot.is-streaming { opacity: .88; }
+    .msg-error { align-self: flex-start; max-width: 100%; padding: 10px 13px; border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent); background: transparent; color: var(--danger); }
+    .msg-pending { opacity: .55; }
+
+    .note { align-self: stretch; text-align: center; color: var(--text-3); font-size: 12px; padding: 2px 0; }
+    .note.is-thinking { animation: blink 1.3s ease-in-out infinite; }
+
+    /* one collapsible line chrome for thinking and tool calls */
+    .tool { align-self: stretch; padding: 1px 0; font: 12px/19px var(--mono); color: var(--text-3); }
+    .think, details.think { align-self: stretch; margin: 0; color: var(--text-3); font-size: 12px; }
+    .think-body, .think {
+      white-space: pre-wrap;
+    }
+    details.think > summary { cursor: pointer; list-style: none; user-select: none; }
+    details.think > summary::-webkit-details-marker { display: none; }
+    details.think > summary::before { content: '\25B8'; display: inline-block; width: 14px; }
+    details.think[open] > summary::before { content: '\25BE'; }
+    details.think > .think-body {
+      margin: 2px 0 4px 7px;
+      padding: 2px 0 2px 10px;
+      border-left: 1px solid var(--hairline);
+      max-height: 260px;
+      overflow-y: auto;
+    }
+
+    pre.code {
+      margin: 6px 0 2px;
+      padding: 6px 0;
+      border-top: 1px solid var(--hairline);
+      background: transparent;
+      font: 12px/19px var(--mono);
+      color: var(--text-2);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      max-height: 320px;
+      overflow: auto;
+    }
+    code.inline { padding: 1px 5px; border-radius: 6px; background: var(--hover); font: 12px/19px var(--mono); }
+
+    /* ── capsule composer ── */
+    .composer { flex: none; display: flex; flex-direction: column; gap: 4px; margin: 0 8px 8px; padding: 8px 8px 6px 14px; border: 1px solid var(--hairline); border-radius: var(--radius-card); background: var(--layer); box-shadow: var(--shadow); }
+    textarea {
+      width: 100%;
+      min-height: 44px;
+      max-height: 132px;
+      padding: 2px 0;
+      border: none;
+      border-radius: 0;
+      background: transparent;
+      color: var(--text);
+      /* 显式属性而不是 font 简写：简写里写 inherit 是非法值，整条会被丢弃，
+         输入框就会退回浏览器默认字体（这就是字体“看着不舒服”的原因）。 */
+      font-family: var(--ui);
+      font-size: 14px;
+      font-weight: 400;
+      line-height: 22px;
+      letter-spacing: normal;
+      font-variant-numeric: normal;
+      -webkit-font-smoothing: antialiased;
+      outline: none;
+      resize: none;
+      caret-color: var(--accent);
+    }
+    .row { display: flex; align-items: center; gap: 8px; min-height: 28px; }
+    .hint { flex: 1; min-width: 0; color: var(--text-3); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .hint[data-error='true'] { color: var(--danger); }
+    .send {
+      flex: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      border: none;
+      border-radius: 50%;
+      background: var(--accent);
+      color: var(--accent-ink);
+      font: 15px/1 var(--ui);
+      cursor: pointer;
+      transition: background-color 100ms ease-out, opacity 100ms ease-out;
+    }
+    .send:hover { background: var(--accent-hover); transform: scale(1.04); }
+    /* 箭头自己画（16×16、1.7px 圆头描边）：字体里的 ↑ 字形由字体决定，粗细和留白都不受控。 */
+    .send svg { width: 16px; height: 16px; display: block; }
+    .send:disabled { opacity: .5; cursor: default; }
+
+    /* ── 交互动效 ─────────────────────────────────────────────────────────
+       数值照抄 dsh-better-sidebar：控件 100ms ease-out、开关/进度 150ms、
+       进场淡入 200ms；并且同样遵守 prefers-reduced-motion。 */
+    .icon, .chip, .send, .menuItem, .menuIcon, .menuSave,
+    textarea, details.think > summary, select {
+      transition: background-color 100ms ease-out, color 100ms ease-out,
+                  border-color 100ms ease-out, opacity 100ms ease-out;
+    }
+    .icon:active, .chip:active, .menuItem:active, .menuIcon:active, .menuSave:active { opacity: .75; }
+    .send:active { transform: scale(.94); }
+    .send { transition: background-color 100ms ease-out, transform 120ms ease-out; }
+    .chip[aria-pressed='true'] { transition: background-color 150ms ease-out, color 150ms ease-out, border-color 150ms ease-out; }
+    /* 文本控件不画外框（Chromium 点击文本域也会命中 :focus-visible，会变成蓝框）；
+       焦点反馈放在容器上：输入卡片边框轻微染色 + 阴影，和 DSH 输入框一致。 */
+    textarea:focus-visible, .menuInput:focus-visible, select:focus-visible { outline: none; }
+    .icon:focus-visible, .chip:focus-visible, .send:focus-visible, .menuItem:focus-visible, .menuIcon:focus-visible, .menuSave:focus-visible {
+      outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+      outline-offset: 1px;
+    }
+    .composer { transition: border-color 150ms ease-out, box-shadow 150ms ease-out; }
+    /* 焦点反馈：1px accent 边框 + 3px 柔和外发光。
+       比浏览器默认 outline 好看，又比“只染一点发丝边”明显得多。 */
+    .composer:focus-within {
+      border-color: color-mix(in srgb, var(--accent) 42%, var(--hairline));
+      box-shadow: var(--shadow), 0 0 0 2px color-mix(in srgb, var(--accent) 9%, transparent);
+      background: color-mix(in srgb, var(--layer) 98%, var(--accent) 2%);
+    }
+    .composer:hover:not(:focus-within) { border-color: color-mix(in srgb, var(--text-3) 60%, var(--hairline)); }
+    textarea::placeholder, .menuInput::placeholder { color: var(--text-3); opacity: 1; font: 14px/22px var(--ui); }
+    /* 空输入时发送键收起强调色（DSH 的发送键同样如此） */
+    .send[disabled] { background: var(--hover); color: var(--text-3); }
+    details.think > summary:hover { color: var(--text-2); }
+
+    /* 消息进场：淡入 + 轻微上移，200ms 上限 */
+    @keyframes msgIn { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+    .msg, .note, .tool, details.think { animation: msgIn 180ms ease-out; }
+    .msg-bot.is-streaming { animation: none; }
+
+    /* 菜单：淡入 + 轻微缩放 */
+    @keyframes menuIn { from { opacity: 0; transform: translateY(-2px) scale(.99); } to { opacity: 1; transform: none; } }
+    .menuPanel:not([hidden]) { animation: menuIn 140ms ease-out; }
+
+    /* 输入区随内容长高（与 DSH 输入框一致的体验） */
+    textarea { overflow-y: auto; }
+
+    /* 滚动条：照 SideCardSection.module.css 的 6px 细条 */
+    .log::-webkit-scrollbar, .menuPanel::-webkit-scrollbar, textarea::-webkit-scrollbar, details.think > .think-body::-webkit-scrollbar { width: 6px; height: 6px; }
+    .log::-webkit-scrollbar-thumb, .menuPanel::-webkit-scrollbar-thumb, textarea::-webkit-scrollbar-thumb, details.think > .think-body::-webkit-scrollbar-thumb {
+      border-radius: 3px;
+      background: rgba(127, 127, 127, .35);
+    }
+    .log::-webkit-scrollbar-thumb:hover, .menuPanel::-webkit-scrollbar-thumb:hover, textarea::-webkit-scrollbar-thumb:hover, details.think > .think-body::-webkit-scrollbar-thumb:hover {
+      background: rgba(127, 127, 127, .6);
+    }
+    .log::-webkit-scrollbar-track, .menuPanel::-webkit-scrollbar-track, textarea::-webkit-scrollbar-track { background: transparent; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+    }  </style>
+</head>
+<body>
+  <header class="bar">
+    <span class="pulse" id="pulse" data-state="idle"></span>
+    <span class="title">悬浮窗</span>
+    <span class="grow"></span>
+    <button class="icon" id="btn-new" title="新开一个侧边对话（继承当前会话上下文）">＋</button>
+    <button class="icon" id="btn-pin" title="取消置顶" aria-pressed="true">置顶</button>
+    <button class="icon" id="btn-min" title="最小化">—</button>
+    <button class="icon" id="btn-close" title="关闭">✕</button>
+  </header>
+
+  <div class="threadbar">
+    <div class="menu">
+      <button class="chip" id="threadsBtn" aria-haspopup="menu" aria-expanded="false" title="切换 / 删除侧边对话">新对话 ▾</button>
+      <div class="menuPanel" id="threadsMenu" role="menu" hidden></div>
+    </div>
+    <span class="grow"></span>
+    <button class="chip" id="flame" aria-pressed="false" title="即用即焚">即用即焚</button>
+  </div>
+
+  <div class="logWrap">
+    <main class="log" id="log">
+      <p class="empty" id="empty">输入第一个问题，已继承当前会话上下文…</p>
+    </main>
+    <button class="chip jump" id="jump" hidden title="回到最新消息">↓ 最新</button>
+  </div>
+
+  <div class="tipCard" id="tipCard" data-show="0"></div>
+
+  <footer class="composer">
+    <textarea id="input" rows="2" placeholder="输入第一个问题，已继承当前会话上下文…"></textarea>
+    <div class="row">
+      <span class="hint" id="hint"></span>
+      <button class="send" id="send" title="发送（Enter）" aria-label="发送">
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M8 12.9V4M4.3 7.6 8 3.9l3.7 3.7" fill="none" stroke="currentColor" stroke-width="1.7"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+  </footer>
+
+  <script>
+/**
+ * The floating window's side-chat page.
+ *
+ * It drives the Side Chat JSON API that dsh-better-sidebar already serves
+ * (`POST /sidebar/api/sidechat.*`): the same engine, the same side threads and
+ * the same inheritance as the in-window side panel — this page is only another
+ * view of them, in a window that can live outside the DSH window.
+ *
+ * Thread lifecycle: `sidechat.start` with an empty question creates an EMPTY
+ * thread for the parent session; the first `sidechat.prompt` carries the
+ * boundary and the parent's context snapshot, exactly like the panel's first
+ * message. `sidechat.events` is polled with `afterSeq` for new durable rows,
+ * plus the live token deltas of the in-flight answer.
+ */
+(() => {
+  'use strict'
+
+  const params = new URLSearchParams(location.search)
+  const parentSessionId = params.get('parent') ?? ''
+
+  /**
+   * 深/浅两套外观。这里只管“页面这一半”，原生标题栏由窗口进程自己上色。
+   *
+   * 主题有三个来源，按可信度排序：宿主半的官方接口（它读 DSH 的 ui-theme 设置，
+   * 也就是 DSH 设置页「外观」那一项写的地方）→ 托管页面的原生窗口推下来的主题
+   * （窗口自己看同一份设置）→ URL 里的 theme=（首帧）→ 系统媒体查询（浏览器里单开时）。
+   * 用户在 DSH 里换外观，窗口和标题栏会当场跟着换，不用重开。
+   */
+  const useTheme = (value) => {
+    if (value === 'light' || value === 'dark') document.documentElement.setAttribute('data-theme', value)
+  }
+  useTheme(params.get('theme'))
+  const themeBridge = window.chrome && window.chrome.webview ? window.chrome.webview : undefined
+  /** 窗口进程按设置页推下来的行为开关（即用即焚的默认值见下方 applyWindowSettings）。 */
+  let showSessionTitle = true
+  let closeOnEscape = false
+  /** 设置推送的记账：第一次推送只当"默认值"，之后只有值真的变了才算用户改的设置。 */
+  let settingsSeen = false
+  let lastPushedEphemeral = undefined
+  if (themeBridge !== undefined) {
+    themeBridge.addEventListener('message', (event) => {
+      const data = event.data
+      if (data === null || typeof data !== 'object') return
+      if (data.type === 'theme') useTheme(data.theme)
+      else if (data.type === 'settings') applyWindowSettings(data.settings)
+      else if (data.type === 'clean-result') showToast(data.text)
+    })
+    // 页面脚本跑在导航完成事件之前，先主动要一次当前主题与设置：
+    // 不能让窗口先亮一下深色，也不让即用即焚默认值晚一拍生效。
+    themeBridge.postMessage({ type: 'theme-request' })
+  } else {
+    const lightQuery = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-color-scheme: light)') : undefined
+    if (lightQuery !== undefined) {
+      const fromSystem = () => { useTheme(lightQuery.matches ? 'light' : 'dark') }
+      fromSystem()
+      if (typeof lightQuery.addEventListener === 'function') lightQuery.addEventListener('change', fromSystem)
+      else if (typeof lightQuery.addListener === 'function') lightQuery.addListener(fromSystem)
+    }
+  }
+
+  /**
+   * 宿主的主题通道（DSH 官方 ui-theme 设置）：宿主半还没这个路由时是 404，
+   * 那就什么都不做——那种情况下原生窗口自己盯着同一份设置文件。拿到答案后
+   * 页面自己上色，并把同一个答案回推给原生标题栏，两边永远同色。
+   */
+  const knownTheme = (value) => value === 'light' || value === 'dark'
+  /** 上一次回推给窗口进程的主题：没变就不推，省掉每 2 秒一条桥消息和一行日志。 */
+  let lastObservedTheme = undefined
+  const pollTheme = () => fetch('/dsh-float-chat/theme', { headers: { accept: 'application/json' } })
+    .then((response) => (response.ok ? response.json() : undefined))
+    .then((body) => {
+      const value = body !== null && body !== undefined && body.value !== undefined ? body.value : undefined
+      if (value === undefined) return false
+      const theme = knownTheme(value.resolved) ? value.resolved : knownTheme(value.preference) ? value.preference : undefined
+      if (theme !== undefined) {
+        useTheme(theme)
+        if (themeBridge !== undefined && theme !== lastObservedTheme) {
+          lastObservedTheme = theme
+          themeBridge.postMessage({ type: 'theme-observed', theme })
+        }
+      }
+      return true
+    })
+    .catch(() => false)
+  /*
+   * 只在“没有原生窗口”的场合轮询宿主：原生窗口才是权威——它知道设置页里被固定的
+   * 外观（例如 DSH 正跟随系统＝深色，而用户把浮窗固定成浅色）。页面对着一张只反映
+   * DSH 的接口轮询的话，2 秒后就会把标题栏已经变浅的页面又拉回深色。
+   */
+  if (themeBridge === undefined) {
+    // 只探一次：老宿主答 404 就不再骚扰它。
+    void pollTheme().then((available) => { if (available) setInterval(pollTheme, 2000) })
+  }
+  // Hosted by the native window (it injects this attribute before any page
+  // script runs) the window chrome — title, pin, minimize, close — is the
+  // host's own header, so this page draws none of it.
+  if (window.__DSH_FLOAT_NATIVE__ === true) document.documentElement.setAttribute('data-native', '1')
+
+  const THREAD_KEY = 'dsh-float-chat.thread:' + (parentSessionId === '' ? 'none' : parentSessionId)
+  const THREADS_KEY = 'dsh-float-chat.threads:' + (parentSessionId === '' ? 'none' : parentSessionId)
+  const FLAME_KEY = 'dsh-float-chat.flame:' + (parentSessionId === '' ? 'none' : parentSessionId)
+  const POLL_MS = 700
+  const BOUNDARY_PREFIX = 'Side conversation boundary.'
+  /** The injected context message, verbatim: it must never render as a bubble. */
+  const BOUNDARY_PROMPT = [
+    'Side conversation boundary.',
+    '',
+    'Everything before this boundary is inherited history from the parent session: its completed turns, its pending question, and \u2014 if the parent was mid-turn \u2014 its in-progress output frozen at the moment this side conversation started. It is reference context only. It is not your current task.',
+    '',
+    'Do not continue, execute, or complete any instructions, plans, tool calls, approvals, edits, or requests from before this boundary. Only messages submitted after this boundary are active user instructions for this side conversation.',
+    '',
+    'Mode: this is a continuable side conversation. Your answers stay in this side thread and are viewed in the side panel; they are never delivered into the parent session.',
+  ].join('\n')
+
+  const log = document.getElementById('log')
+  const empty = document.getElementById('empty')
+  const input = document.getElementById('input')
+  const sendButton = document.getElementById('send')
+  const hint = document.getElementById('hint')
+  const pulse = document.getElementById('pulse')
+  const pinButton = document.getElementById('btn-pin')
+
+  let childId = null
+  let afterSeq = 0
+  let lastUsage = null
+  let busy = false
+  let injected = false
+  let seeded = false
+  /** True only for a thread this window just created (see the seed gate). */
+  let freshThread = false
+  let ungatedEvents = 0
+  const seen = new Set()
+  const liveNodes = new Map()
+  const pendingNodes = new Map()
+  // The first question of a thread is rendered from the context-injection message;
+  // the durable user row for the same text must then be skipped, not shown twice.
+  let expectingUserText = ''
+  let userRowRendered = false
+
+  function setHint(text, isError) {
+    if (isError === true) hostLog('error shown: ' + String(text))
+    hint.textContent = text
+    hint.dataset.error = isError === true ? 'true' : 'false'
+  }
+
+  function setPulse(state) {
+    pulse.dataset.state = state
+  }
+
+  async function api(method, payload) {
+    const response = await fetch('/sidebar/api/' + method, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const parsed = await response.json().catch(() => null)
+    if (!response.ok || parsed === null || parsed.ok !== true || parsed.value === undefined) {
+      const message = parsed !== null && parsed.error !== undefined && typeof parsed.error.message === 'string'
+        ? parsed.error.message
+        : 'HTTP ' + String(response.status)
+      throw new Error(message)
+    }
+    return parsed.value
+  }
+
+  function nearBottom() {
+    return log.scrollHeight - log.scrollTop - log.clientHeight < 60
+  }
+
+  function append(node, animate) {
+    const stick = nearBottom()
+    empty.hidden = true
+    // The thinking row is only an anchor while it is really mounted: inserting
+    // before a detached node throws (insertBefore needs a child of the list).
+    if (thinking.parentNode === log) log.insertBefore(node, thinking)
+    else log.appendChild(node)
+    if (stick) {
+      // 新消息平滑滑到底；流式增量直接跳，避免跟输入/渲染抢帧
+      if (animate === true) log.scrollTo({ top: log.scrollHeight, behavior: 'smooth' })
+      else log.scrollTop = log.scrollHeight
+    }
+    return node
+  }
+
+  /** The one "still working" row, always kept last in the transcript. */
+  const thinking = document.createElement('div')
+  thinking.className = 'note is-thinking'
+  thinking.textContent = '正在思考…'
+  thinking.hidden = true
+
+  function setThinking(active) {
+    thinking.hidden = active !== true
+    if (active === true) log.appendChild(thinking)
+    if (active === true && nearBottom()) log.scrollTop = log.scrollHeight
+  }
+
+  function bubble(kind, text) {
+    const node = document.createElement('div')
+    node.className = 'msg ' + (kind === 'user' ? 'msg-user' : kind === 'error' ? 'msg-error' : 'msg-bot')
+    node.textContent = text
+    return node
+  }
+
+  /**
+   * Render message text with the two things that matter for reading answers:
+   * fenced code blocks and inline code. Everything else stays plain text —
+   * nodes are built with DOM calls, never with HTML strings.
+   */
+  function renderRich(node, text) {
+    const parts = String(text).split('```')
+    for (let index = 0; index < parts.length; index++) {
+      const chunk = parts[index]
+      if (chunk === '') continue
+      if (index % 2 === 1) {
+        const pre = document.createElement('pre')
+        pre.className = 'code'
+        const code = document.createElement('code')
+        code.textContent = chunk.replace(/^[A-Za-z0-9+#._-]*\n/, '').replace(/\n$/, '')
+        pre.appendChild(code)
+        node.appendChild(pre)
+        continue
+      }
+      for (const piece of chunk.split(/(`[^`\n]+`)/)) {
+        if (piece === '') continue
+        if (piece.length > 2 && piece.charCodeAt(0) === 96 && piece.charCodeAt(piece.length - 1) === 96) {
+          const code = document.createElement('code')
+          code.className = 'inline'
+          code.textContent = piece.slice(1, -1)
+          node.appendChild(code)
+        } else {
+          node.appendChild(document.createTextNode(piece))
+        }
+      }
+    }
+    return node
+  }
+
+  /** A message bubble that understands code fences. */
+  function richBubble(kind, text) {
+    return renderRich(bubble(kind, ''), text)
+  }
+
+  /** Settled reasoning collapses into a small 思考 disclosure. */
+  function thinkNode(text) {
+    const details = document.createElement('details')
+    details.className = 'think'
+    const summary = document.createElement('summary')
+    summary.textContent = '思考'
+    const body = document.createElement('div')
+    body.className = 'think-body'
+    body.textContent = text
+    details.appendChild(summary)
+    details.appendChild(body)
+    return details
+  }
+
+  function note(text) {
+    const node = document.createElement('div')
+    node.className = 'note'
+    node.textContent = text
+    return node
+  }
+
+  /**
+   * Text of one message payload. Log events normally carry an array of content
+   * blocks, but the boundary injection has also been seen as a plain string —
+   * extract from both shapes so nothing slips past the injection filter.
+   */
+  function blockText(content) {
+    if (typeof content === 'string') return content
+    if (!Array.isArray(content)) return ''
+    const parts = []
+    for (const block of content) {
+      if (typeof block === 'string') { parts.push(block); continue }
+      if (block === null || typeof block !== 'object') continue
+      if (typeof block.text === 'string') { parts.push(block.text); continue }
+      if (typeof block.content === 'string') parts.push(block.content)
+    }
+    return parts.join('\n\n')
+  }
+
+  /** The plugin's own context injection (boundary prompt + snapshot) is not a user message. */
+  /** A row the user actually typed, as opposed to the context injection. */
+  function isUserRow(event) {
+    return event.type === 'user/message' && event.data !== undefined && !isInjection(event.data)
+  }
+
+  function isInjection(data) {
+    const source = data.source
+    if (source !== null && typeof source === 'object' && source.kind !== undefined && source.kind !== 'user') return true
+    const text = blockText(data.content).replace(/^\s+/, '')
+    if (text.startsWith(BOUNDARY_PREFIX)) return true
+    return text.slice(0, 400).indexOf(BOUNDARY_PREFIX) >= 0
+  }
+
+  /** Drop the injected boundary text; whatever follows it is the user's own words. */
+  function stripBoundary(text) {
+    const at = text.indexOf(BOUNDARY_PROMPT)
+    if (at < 0) {
+      const loose = text.indexOf(BOUNDARY_PREFIX)
+      if (loose < 0) return text
+      const modeEnd = text.indexOf('parent session.', loose)
+      return modeEnd < 0 ? '' : text.slice(modeEnd + 'parent session.'.length).replace(/^\s+/, '')
+    }
+    return text.slice(at + BOUNDARY_PROMPT.length).replace(/^\s+/, '')
+  }
+
+  /**
+   * The durable user row claims the optimistic bubble. Matching on the exact text
+   * is fragile (the host may normalise or wrap it), so an unmatched durable row
+   * claims the oldest pending bubble instead — otherwise the same message shows
+   * twice: once as the local bubble and once from the log.
+   */
+  function resolvePending(text) {
+    let node = pendingNodes.get(text)
+    if (node === undefined && pendingNodes.size > 0) {
+      const oldest = pendingNodes.keys().next().value
+      node = pendingNodes.get(oldest)
+      pendingNodes.delete(oldest)
+      hostLog('durable user row claimed the oldest pending bubble')
+    } else {
+      pendingNodes.delete(text)
+    }
+    if (node !== undefined) node.remove()
+  }
+
+  function applyLive(live) {
+    for (const event of live) {
+      const data = event.data ?? {}
+      const chunk = data.chunk ?? {}
+      if (chunk.type !== 'text-delta' && chunk.type !== 'reasoning-delta') continue
+      if (typeof chunk.text !== 'string' || chunk.text === '') continue
+      const kind = chunk.type === 'text-delta' ? 'assistant' : 'reasoning'
+      const key = String(data.turn) + ':' + String(data.step) + ':' + String(chunk.index) + ':' + kind
+      let node = liveNodes.get(key)
+      if (node === undefined) {
+        node = document.createElement('div')
+        node.className = kind === 'assistant' ? 'msg msg-bot is-streaming' : 'think'
+        node.textContent = chunk.text
+        liveNodes.set(key, node)
+        append(node)
+      } else {
+        const stick = nearBottom()
+        node.textContent += chunk.text
+        if (stick) log.scrollTop = log.scrollHeight
+      }
+      setPulse('running')
+      setThinking(false)
+      setHint('生成中…', false)
+    }
+  }
+
+  function settleLive(turn, step) {
+    const prefix = String(turn) + ':' + String(step) + ':'
+    for (const [key, node] of liveNodes) {
+      if (key.startsWith(prefix)) {
+        node.remove()
+        liveNodes.delete(key)
+      }
+    }
+  }
+
+  function applyEvent(event) {
+    if (typeof event.seq === 'number') {
+      if (seen.has(event.seq)) return
+      seen.add(event.seq)
+      if (event.seq > afterSeq) afterSeq = event.seq
+    }
+    /*
+     * The events API returns a BOUNDED TAIL window: `session/end-seed` is not
+     * guaranteed to be inside it. Gating on that marker therefore dropped every
+     * durable row, and the window only ever showed live streaming text — which
+     * froze mid-answer once the deltas stopped. Rules now:
+     *   · reopened thread  → render what the window holds (its recent history;
+     *     the inherited seed is long past);
+     *   · freshly created  → start at the first real user message, so the
+     *     parent's inherited tail cannot leak into the new thread;
+     *   · safety valve     → never show nothing: after enough events without an
+     *     anchor, render anyway.
+     */
+    if (!seeded) {
+      if (event.type === 'session/end-seed') {
+        seeded = true
+        append(note('已继承当前会话上下文'))
+        return
+      }
+      if (freshThread && !isUserRow(event)) {
+        ungatedEvents++
+        if (ungatedEvents > 40) {
+          seeded = true
+          hostLog('seed marker missing after ' + ungatedEvents + ' events; rendering anyway')
+        }
+        return
+      }
+      seeded = true
+      hostLog('seed marker missing; rendering from the first user message')
+    }
+    const data = event.data ?? {}
+    switch (event.type) {
+      case 'user/message': {
+        const raw = blockText(data.content)
+        if (raw === '') break
+        if (isInjection(data)) {
+          if (!injected) {
+            injected = true
+            append(note('已继承当前会话上下文'), true)
+          }
+          // The first side-chat question travels inside this injection message:
+          // keep the user's words, never the boundary text itself.
+          /*
+           * The injection row carries the boundary prompt, its explanation and the
+           * "Mode: …" paragraph — never the user's words (those arrive as their own
+           * durable row, source=user). Rendering whatever followed the boundary
+           * prefix is what leaked that boilerplate into the window, so anything
+           * still containing boundary/mode text is discarded here.
+           */
+          const question = stripBoundary(raw)
+          const boilerplate = question.indexOf(BOUNDARY_PREFIX) >= 0
+            || question.indexOf('Mode: this is a continuable side conversation') >= 0
+            || question.indexOf('Do not continue, execute, or complete') >= 0
+          if (question !== '' && !boilerplate) {
+            const claimed = pendingNodes.size > 0
+            resolvePending(question)
+            append(richBubble('user', question), true)
+            if (claimed || question === expectingUserText) userRowRendered = true
+          }
+          break
+        }
+        if (userRowRendered && raw === expectingUserText) {
+          hostLog('duplicate durable user row skipped')
+          userRowRendered = false
+          expectingUserText = ''
+          break
+        }
+        resolvePending(raw)
+        append(richBubble('user', raw), true)
+        break
+      }
+      case 'turn/end': {
+        setThinking(false)
+        setPulse('idle')
+        const out = lastUsage === null ? 0 : lastUsage.outputTokens
+        hostLog('turn ' + String(data.turn) + ' ended; out=' + String(out) + ' reason=' + JSON.stringify(data.reason ?? null))
+        setHint(out === 0 ? '本轮结束' : '本轮结束 · 输出 ' + out + ' tokens', false)
+        lastUsage = null
+        break
+      }
+      case 'assistant/message': {
+        setThinking(false)
+        settleLive(data.turn, data.step)
+        if (data.usage !== null && typeof data.usage === 'object') lastUsage = data.usage
+        const content = Array.isArray(data.message?.content) ? data.message.content : []
+        for (const block of content) {
+          if (block === null || typeof block !== 'object' || typeof block.text !== 'string' || block.text === '') continue
+          if (block.type === 'reasoning') {
+            append(thinkNode(block.text))
+          } else if (block.type === 'text') {
+            append(richBubble('assistant', block.text), true)
+          }
+        }
+        break
+      }
+      case 'tool/call': {
+        const name = typeof data.name === 'string' ? data.name : 'tool'
+        const node = document.createElement('div')
+        node.className = 'tool'
+        node.textContent = '· ' + name
+        node.dataset.callId = typeof data.callId === 'string' ? data.callId : ''
+        append(node)
+        break
+      }
+      case 'tool/result': {
+        const callId = data.message?.source?.callId
+        if (typeof callId === 'string') {
+          const node = log.querySelector('.tool[data-call-id="' + CSS.escape(callId) + '"]')
+          if (node !== null) node.textContent = (data.error === undefined ? '✓ ' : '✕ ') + node.textContent.replace(/^· /, '')
+        }
+        break
+      }
+      case 'assistant/live-chunk': {
+        applyLive([event])
+        break
+      }
+      default:
+        break
+    }
+  }
+
+  /* ── thread history + 即用即焚 ──────────────────────────────────────
+   * Every side thread is a persisted DSH session, so a thread that is
+   * switched away from is never lost; this list is only the window's index of
+   * them. With 即用即焚 on, the thread is deleted through the installed
+   * dsh-plugin-session-purge API when the window closes. */
+  let flame = localStorage.getItem(FLAME_KEY) === '1'
+  /** 用户在这个窗口里手动开/关过即用即焚，就不再吃设置页里的默认值。 */
+  let flameExplicit = localStorage.getItem(FLAME_KEY) !== null
+  const threadsButton = document.getElementById('threadsBtn')
+  const threadsMenu = document.getElementById('threadsMenu')
+  const flameButton = document.getElementById('flame')
+
+  function readThreads() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(THREADS_KEY) ?? '[]')
+      return Array.isArray(parsed) ? parsed : []
+    } catch (error) {
+      return []
+    }
+  }
+
+  function writeThreads(list) {
+    try {
+      localStorage.setItem(THREADS_KEY, JSON.stringify(list.slice(0, 20)))
+    } catch (error) {
+      // A full quota must not break the conversation.
+    }
+  }
+
+  function rememberThread(id, title) {
+    const list = readThreads().filter((entry) => entry.id !== id)
+    const previous = readThreads().filter((entry) => entry.id === id)[0]
+    const fallback = '对话 ' + new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+    const keep = title !== undefined && title !== '' ? title : (previous !== undefined && previous.title !== '' ? previous.title : fallback)
+    list.unshift({ id, title: keep, at: Date.now(), flame })
+    writeThreads(list)
+    refreshThreadOptions()
+  }
+
+  function forgetThread(id) {
+    writeThreads(readThreads().filter((entry) => entry.id !== id))
+    refreshThreadOptions()
+  }
+
+  const tipCard = document.getElementById('tipCard')
+
+  /** Place the hover card beside its row, flipping side/edge when space runs out. */
+  function positionTip(anchor) {
+    const rect = anchor.getBoundingClientRect()
+    const card = tipCard.getBoundingClientRect()
+    const gap = 10
+    let left = rect.right + gap
+    if (left + card.width > window.innerWidth - 8) left = Math.max(8, rect.left - gap - card.width)
+    let top = rect.top
+    if (top + card.height > window.innerHeight - 8) top = Math.max(8, window.innerHeight - 8 - card.height)
+    tipCard.style.left = left + 'px'
+    tipCard.style.top = top + 'px'
+  }
+
+  function hideTip() {
+    tipCard.dataset.show = '0'
+  }
+
+  /** Full name + where this thread stands, on hover or keyboard focus. */
+  function showTip(anchor, id, isCurrent) {
+    const entry = readThreads().filter((item) => item.id === id)[0]
+    const full = entry !== undefined && entry.title !== '' ? entry.title : id
+    tipCard.textContent = ''
+    const title = document.createElement('div')
+    title.className = 'tipTitle'
+    title.textContent = full
+    const meta = document.createElement('div')
+    meta.className = 'tipMeta'
+    const when = entry !== undefined && typeof entry.at === 'number'
+      ? new Date(entry.at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+      : '时间未知'
+    meta.textContent = (isCurrent ? '当前对话' : '点击可切换') + ' · ' + when
+      + (entry !== undefined && entry.flame ? ' · 即用即焚' : '')
+    tipCard.appendChild(title)
+    tipCard.appendChild(meta)
+    tipCard.dataset.show = '1'
+    positionTip(anchor)
+  }
+
+  /** One plain menu row (actions). */
+  function menuItem(label, handler, extraClass, keepOpen) {
+    const item = document.createElement('button')
+    item.type = 'button'
+    item.className = 'menuItem' + (extraClass === undefined ? '' : ' ' + extraClass)
+    item.textContent = label
+    item.addEventListener('click', () => {
+      if (keepOpen !== true) closeMenu()
+      handler()
+    })
+    return item
+  }
+
+  /** Persist a new name for one thread (the window's own index of threads). */
+  function renameThread(id, name) {
+    const list = readThreads().map((entry) => (
+      entry.id === id ? Object.assign({}, entry, { title: name }) : entry
+    ))
+    writeThreads(list)
+    refreshThreadOptions()
+  }
+
+  /** Inline rename editor: WebView2 refuses window.prompt, so the row becomes a field. */
+  function renameInline(row, id, previous) {
+    hideTip()
+    row.textContent = ''
+    const field = document.createElement('input')
+    field.className = 'menuInput'
+    field.value = previous
+    field.placeholder = '给这段对话起个名字'
+    const commit = () => {
+      const name = field.value.trim()
+      if (name !== '') renameThread(id, name)
+      else refreshThreadOptions()
+    }
+    const save = document.createElement('button')
+    save.type = 'button'
+    save.className = 'menuSave'
+    save.textContent = '保存'
+    save.addEventListener('click', commit)
+    field.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') { event.preventDefault(); commit() }
+      if (event.key === 'Escape') { event.preventDefault(); refreshThreadOptions() }
+    })
+    const cancel = document.createElement('button')
+    cancel.type = 'button'
+    cancel.className = 'menuIcon'
+    cancel.title = '取消'
+    cancel.textContent = '✕'
+    cancel.addEventListener('click', () => refreshThreadOptions())
+    row.appendChild(field)
+    row.appendChild(save)
+    row.appendChild(cancel)
+    field.focus()
+    field.select()
+  }
+
+  /** One thread row: pick it, or rename it. */
+  function threadRow(id, label, isCurrent) {
+    const row = document.createElement('div')
+    row.className = 'menuRow'
+    const pick = document.createElement('button')
+    pick.type = 'button'
+    pick.className = 'menuItem' + (isCurrent ? ' is-current' : '')
+    pick.textContent = label
+    if (!isCurrent) pick.addEventListener('click', () => { closeMenu(); void openThread(id) })
+    pick.addEventListener('mouseenter', () => showTip(pick, id, isCurrent))
+    pick.addEventListener('mouseleave', hideTip)
+    pick.addEventListener('focus', () => showTip(pick, id, isCurrent))
+    pick.addEventListener('blur', hideTip)
+    const edit = document.createElement('button')
+    edit.type = 'button'
+    edit.className = 'menuIcon'
+    edit.title = '重命名这段对话'
+    edit.textContent = '\u270E'
+    edit.addEventListener('click', (event) => {
+      event.stopPropagation()
+      renameInline(row, id, label.replace(/^\u5373\u711A \u00B7 /, '').replace(/^[\u5F53\u524D\uFF1A]/, ''))
+    })
+    row.appendChild(pick)
+    row.appendChild(edit)
+    return row
+  }
+
+  function closeMenu() {
+    threadsMenu.hidden = true
+    threadsButton.setAttribute('aria-expanded', 'false')
+    hideTip()
+  }
+
+  function currentLabel() {
+    if (childId === null) return '新对话 ▾'
+    const entry = readThreads().filter((item) => item.id === childId)[0]
+    const title = entry !== undefined && entry.title !== '' ? entry.title : '当前对话'
+    return (flame ? '即焚 · ' : '') + (title.length > 16 ? title.slice(0, 16) + '…' : title) + ' ▾'
+  }
+
+  function refreshThreadOptions() {
+    threadsButton.textContent = currentLabel()
+    threadsMenu.textContent = ''
+    const history = readThreads()
+    const label = (entry) => (entry.flame ? '即焚 · ' : '')
+      + (entry.title === '' ? '对话 ' + entry.id.slice(0, 8) : entry.title.slice(0, 26))
+    if (childId === null) {
+      threadsMenu.appendChild(menuItem('当前：新对话（尚未开始）', () => {}, 'is-current'))
+    } else {
+      const current = history.filter((entry) => entry.id === childId)[0]
+      const text = current === undefined ? '当前：' + currentLabel().replace(' ▾', '') : '当前：' + label(current)
+      threadsMenu.appendChild(threadRow(childId, text, true))
+    }
+    const others = history.filter((entry) => entry.id !== childId)
+    if (others.length === 0) {
+      const empty = document.createElement('div')
+      empty.className = 'menuEmpty'
+      empty.textContent = '还没有历史侧边对话'
+      threadsMenu.appendChild(empty)
+    }
+    for (const entry of others) threadsMenu.appendChild(threadRow(entry.id, label(entry), false))
+    const sep = document.createElement('div')
+    sep.className = 'menuSep'
+    threadsMenu.appendChild(sep)
+    threadsMenu.appendChild(menuItem('新对话（继承当前会话上下文）', () => { void startFreshThread() }))
+    if (childId !== null) {
+      threadsMenu.appendChild(menuItem('重命名当前对话', () => {
+        const row = threadsMenu.querySelector('.menuRow')
+        if (row === null) return
+        const current = readThreads().filter((entry) => entry.id === childId)[0]
+        renameInline(row, childId, current === undefined ? '' : current.title)
+        threadsMenu.scrollTop = 0
+      }, undefined, true))
+    }
+    if (childId !== null) {
+      threadsMenu.appendChild(menuItem('删除这段对话记录', () => { void deleteCurrentThread() }, 'is-danger'))
+    }
+  }
+
+  /** Delete the current thread's persisted record (the same purge the mode uses). */
+  async function deleteCurrentThread() {
+    if (childId === null) return
+    const target = childId
+    forgetThread(target)
+    localStorage.removeItem(THREAD_KEY)
+    childId = null
+    resetLog()
+    refreshThreadOptions()
+    setHint('正在删除这段对话记录…', false)
+    const ok = await purgeThread(target)
+    setHint(ok ? '已删除该对话记录（含落盘文件）' : '删除失败：记录可能已被移除', !ok)
+  }
+
+  function applyFlame() {
+    flameButton.setAttribute('aria-pressed', flame ? 'true' : 'false')
+    flameButton.title = flame
+      ? '即用即焚已开：关闭窗口时删除这段对话记录'
+      : '当前保留记录；点一下改成即用即焚'
+    try {
+      localStorage.setItem(FLAME_KEY, flame ? '1' : '0')
+    } catch (error) {
+      // Preference persistence is best effort.
+    }
+  }
+
+  /**
+   * 窗口进程推下来的插件设置（设置页里那几项）。即用即焚只在用户于本窗口手动
+   * 开/关过之前采用默认值——手动选择永远优先。
+   */
+  /** 一条短提示（清理结果这类）：底部浮出来，几秒后自己淡出。 */
+  let toastTimer
+  function showToast(text) {
+    if (typeof text !== 'string' || text === '') return
+    let node = document.getElementById('float-toast')
+    if (node === null) {
+      node = document.createElement('div')
+      node.id = 'float-toast'
+      node.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translate(-50%,10px);'
+        + 'max-width:82%;padding:10px 14px;border-radius:10px;background:rgba(28,30,34,.94);color:#fff;'
+        + 'font-size:13px;line-height:20px;box-shadow:0 6px 20px rgba(0,0,0,.28);z-index:9999;'
+        + 'opacity:0;transition:opacity 180ms ease-out, transform 180ms cubic-bezier(.22,.61,.36,1);pointer-events:none;'
+      document.body.appendChild(node)
+    }
+    node.textContent = text
+    node.style.opacity = '1'
+    node.style.transform = 'translate(-50%, 0)'
+    if (toastTimer !== undefined) clearTimeout(toastTimer)
+    toastTimer = setTimeout(() => {
+      node.style.opacity = '0'
+      node.style.transform = 'translate(-50%, 6px)'
+    }, 5000)
+  }
+
+  /**
+   * 交互润色：消息入场、按压缩放这类小动效。整块包在
+   * `prefers-reduced-motion: no-preference` 里，系统的"减少动态效果"一开就自动失效
+   * （页面里已有的 `reduce` 规则用 !important 兜底，两边不会互相顶）。
+   */
+  function installPolish() {
+    const tag = document.createElement('style')
+    tag.textContent = [
+      '@media (prefers-reduced-motion: no-preference) {',
+      '  @keyframes floatRise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }',
+      '  .msg { animation: floatRise 170ms cubic-bezier(.22,.61,.36,1) both; }',
+      '  .chip, .icon, .menuItem, .menuIcon, .menuSave {',
+      '    transition: background-color 120ms ease-out, color 120ms ease-out, border-color 120ms ease-out, transform 120ms ease-out;',
+      '  }',
+      '  .chip:active, .icon:active, .menuItem:active, .menuIcon:active, .menuSave:active { transform: scale(.96); }',
+      '  .jump { transition: opacity 160ms ease-out, transform 160ms ease-out; }',
+      '  .think-body { animation: floatRise 140ms ease-out; }',
+      '}',
+    ].join('\n')
+    document.head.appendChild(tag)
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installPolish)
+  else installPolish()
+
+  function applyWindowSettings(settings) {
+    if (settings === null || typeof settings !== 'object') return
+    if (typeof settings.showSessionTitle === 'boolean') showSessionTitle = settings.showSessionTitle
+    if (typeof settings.closeOnEscape === 'boolean') closeOnEscape = settings.closeOnEscape
+    if (settings.ephemeralByDefault !== true && settings.ephemeralByDefault !== false) return
+    const value = settings.ephemeralByDefault
+    const first = !settingsSeen
+    settingsSeen = true
+    // 只有"和上一次推送不同"才算用户在设置页里改的：否则每次别的设置（外观、透明度…）
+    // 变动都会把窗口里手动开/关过的即用即焚状态顶掉。
+    const changed = value !== lastPushedEphemeral
+    lastPushedEphemeral = value
+    // 第一次推送只当默认值（用户在本窗口手动开/关过就尊重他的选择）；
+    // 之后的真实改动立刻作用到这个窗口——设置页这才算真的"控制"了悬浮窗。
+    if (changed && (!first || !flameExplicit)) {
+      flame = value
+      applyFlame()
+    }
+  }
+
+  /** Delete one ephemeral thread through the installed session-purge plugin. */
+  function purgeThread(id) {
+    return fetch('/x-session-purge/delete', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id, children: true }),
+    }).then(() => true).catch(() => false)
+  }
+
+  /** Leaving an ephemeral thread behind (new thread / switching) burns it now. */
+  function burnCurrentIfEphemeral() {
+    if (!flame || childId === null) return
+    const target = childId
+    forgetThread(target)
+    localStorage.removeItem(THREAD_KEY)
+    void purgeThread(target)
+  }
+
+  /** The native window calls this before closing. */
+  window.__DSH_FLOAT_CLEANUP__ = () => {
+    if (!flame || childId === null) return Promise.resolve(true)
+    const target = childId
+    forgetThread(target)
+    localStorage.removeItem(THREAD_KEY)
+    return purgeThread(target)
+  }
+
+  async function openThread(id) {
+    burnCurrentIfEphemeral()
+    resetLog()
+    childId = id
+    freshThread = false
+    ungatedEvents = 0
+    afterSeq = 0
+    localStorage.setItem(THREAD_KEY, id)
+    try {
+      const value = await api('sidechat.events', { childId: id, afterSeq: 0 })
+      const replay = value.events ?? []
+      if (!seeded && replay.length > 0 && !replay.some((event) => event.type === 'session/end-seed')) seeded = true
+      for (const event of replay) applyEvent(event)
+      applyLive(value.live ?? [])
+      setHint('已切换到历史对话', false)
+      refreshThreadOptions()
+    } catch (error) {
+      setHint('打开历史对话失败：' + String(error.message ?? error), true)
+    }
+  }
+
+  function resetLog() {
+    for (const node of liveNodes.values()) node.remove()
+    liveNodes.clear()
+    pendingNodes.clear()
+    seen.clear()
+    injected = false
+    seeded = false
+    afterSeq = 0
+    setThinking(false)
+    log.querySelectorAll('.msg, .note, .tool, .think').forEach((node) => node.remove())
+    empty.hidden = false
+  }
+
+  /** Thread title from the host: the native header shows it as the window title. */
+  async function nameThread(id) {
+    try {
+      const info = await api('sidechat.info', { childId: id })
+      const title = info !== null && typeof info.title === 'string' ? info.title : ''
+      if (title === '') return
+      rememberThread(id, title)
+    } catch (error) {
+      // A missing title is cosmetic.
+    }
+  }
+
+  /**
+   * Put the session this window belongs to into the title bar, so a floating
+   * window is always attributable to one conversation. The title comes from the
+   * installed dsh-plugin-session-purge list route (the same source its settings
+   * page shows) — nothing extra is written anywhere.
+   */
+  async function loadParentTitle() {
+    if (parentSessionId === '') return
+    try {
+      const response = await fetch('/x-session-purge/list')
+      const body = await response.json()
+      const list = body !== null && Array.isArray(body.sessions) ? body.sessions : []
+      const hit = list.filter((entry) => entry.id === parentSessionId)[0]
+      const title = hit !== undefined && typeof hit.title === 'string' ? hit.title.trim() : ''
+      if (title !== '' && showSessionTitle) document.title = '悬浮窗 · ' + (title.length > 28 ? title.slice(0, 28) + '…' : title)
+    } catch (error) {
+      // A missing title is cosmetic; the window stays usable.
+    }
+  }
+
+  async function attachStored() {
+    const stored = localStorage.getItem(THREAD_KEY)
+    if (stored === null || stored === '') return false
+    try {
+      const value = await api('sidechat.events', { childId: stored, afterSeq: 0 })
+      childId = stored
+      freshThread = false
+      ungatedEvents = 0
+      rememberThread(stored, '')
+      void nameThread(stored)
+      const replay = value.events ?? []
+      // A replay page that carries no seed marker already starts past the boundary.
+      if (!seeded && replay.length > 0 && !replay.some((event) => event.type === 'session/end-seed')) seeded = true
+      for (const event of replay) applyEvent(event)
+      applyLive(value.live ?? [])
+      return true
+    } catch (error) {
+      localStorage.removeItem(THREAD_KEY)
+      return false
+    }
+  }
+
+  async function startThread() {
+    const value = await api('sidechat.start', { sessionId: parentSessionId, question: '' })
+    childId = value.childId
+    freshThread = true
+    ungatedEvents = 0
+    localStorage.setItem(THREAD_KEY, childId)
+    rememberThread(childId, '')
+    void nameThread(childId)
+    return childId
+  }
+
+  /**
+   * Report page-side state into window-log.txt (through the native window when
+   * there is one). Without this a stuck window can only be described, not read.
+   */
+  function hostLog(text) {
+    try {
+      const bridge = window.chrome && window.chrome.webview ? window.chrome.webview : undefined
+      if (bridge !== undefined) bridge.postMessage({ type: 'log', text: String(text) })
+    } catch (error) {
+      // Logging must never break the conversation.
+    }
+  }
+
+  let polling = false
+  let pollFails = 0
+
+  async function poll() {
+    if (childId === null || polling) return
+    polling = true
+    // Declared outside the try: the tail of this function still reads it.
+    let value = null
+    try {
+      value = await api('sidechat.events', { childId, afterSeq })
+      const durable = value.events ?? []
+      if (durable.length > 0) hostLog('events +' + durable.length + ' afterSeq=' + afterSeq)
+      for (const event of durable) {
+        // One malformed event must not swallow the rest of the batch.
+        try { applyEvent(event) } catch (error) { hostLog('event failed: ' + String(error && error.message ? error.message : error)) }
+      }
+      applyLive(value.live ?? [])
+      pollFails = 0
+    } catch (error) {
+      pollFails++
+      hostLog('poll failed x' + pollFails + ': ' + String(error && error.message ? error.message : error))
+      throw error
+    } finally {
+      polling = false
+    }
+    if ((value.live ?? []).length === 0) {
+      setPulse('idle')
+      if (hint.textContent === '生成中…') setHint('', false)
+    }
+    // Only while the thinking row is up (i.e. waiting for the first answer of a
+    // turn) ask the host whether the run already ended, so the row cannot stick.
+    if (!thinking.hidden) {
+      const info = await api('sidechat.info', { childId }).catch(() => null)
+      if (info !== null && info.status !== 'running') setThinking(false)
+    }
+  }
+
+  async function send() {
+    const text = input.value.trim()
+    if (text === '' || busy) return
+    if (parentSessionId === '') {
+      setHint('没有收到会话 id，无法继承上下文', true)
+      return
+    }
+    busy = true
+    syncSend()
+    input.value = ''
+    if (typeof growInput === 'function') growInput()
+    const ghost = bubble('user', text)
+    ghost.classList.add('msg-pending')
+    expectingUserText = text
+    userRowRendered = false
+    append(ghost)
+    pendingNodes.set(text, ghost)
+    setPulse('running')
+    setHint('发送中…', false)
+    try {
+      if (childId === null) {
+        await startThread()
+        setHint('已创建侧边对话', false)
+      hostLog('thread started ' + childId)
+      }
+      await api('sidechat.prompt', { childId, text })
+      // The host owns the message now. The bubble stops looking like a pending
+      // ghost, but it STAYS in pendingNodes: when the durable user row arrives it
+      // claims and removes this bubble, so the message is never shown twice.
+      hostLog('prompt accepted')
+      ghost.classList.remove('msg-pending')
+      setHint('', false)
+      setThinking(true)
+      // Detached: a background fetch hiccup must never read as "发送失败".
+      void poll().catch((error) => hostLog('poll after send: ' + String(error && error.message ? error.message : error)))
+    } catch (error) {
+      ghost.remove()
+      pendingNodes.delete(text)
+      setThinking(false)
+      hostLog('send failed: ' + String(error && error.message ? error.message : error))
+      append(bubble('error', '发送失败：' + String(error.message ?? error)))
+      setPulse('error')
+      setHint('发送失败', true)
+    } finally {
+      busy = false
+      syncSend()
+      input.focus()
+    }
+  }
+
+  // Whenever the window regains focus the composer is ready to type into.
+  window.addEventListener('focus', () => {
+    if (document.activeElement !== input) input.focus()
+  })
+
+  /*
+   * 输入法候选框跑到屏幕左上角，根因是"合成时没有可锚定的文本框"：焦点一旦落到
+   * 日志区或 body，输入法就拿不到插入符位置。所以点日志区（没在选文字时）以及
+   * 直接敲字，都把焦点交回输入框，让候选框始终跟着光标。
+   */
+  log.addEventListener('mousedown', (event) => {
+    if (event.button !== 0) return
+    const selection = window.getSelection()
+    if (selection !== null && selection.toString() !== '') return
+    if (event.target === input) return
+    input.focus()
+  })
+
+  document.addEventListener('keydown', (event) => {
+    // 设置页里打开「Esc 关闭窗口」时，Esc 交给窗口进程走它自己的清理关闭路径；
+    // 历史菜单开着的时候 Esc 仍然是关菜单（菜单自己有处理）。
+    if (event.key === 'Escape' && closeOnEscape && threadsMenu.hidden) {
+      if (themeBridge !== undefined) themeBridge.postMessage({ type: 'close-request' })
+      event.preventDefault()
+      return
+    }
+    if (event.isComposing === true || event.keyCode === 229) return
+    if (document.activeElement === input) return
+    if (event.ctrlKey || event.altKey || event.metaKey) return
+    if (typeof event.key !== 'string' || event.key.length !== 1) return
+    input.focus()
+    input.value += event.key
+    event.preventDefault()
+  })
+  threadsButton.addEventListener('click', (event) => {
+    event.stopPropagation()
+    const open = threadsMenu.hidden
+    refreshThreadOptions()
+    threadsMenu.hidden = !open
+    threadsButton.setAttribute('aria-expanded', open ? 'true' : 'false')
+    if (open) {
+      const first = threadsMenu.querySelector('.menuItem, .menuInput, .menuIcon')
+      if (first !== null) first.focus()
+    }
+  })
+  threadsMenu.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return
+    event.preventDefault()
+    closeMenu()
+    threadsButton.focus()
+  })
+  document.addEventListener('click', (event) => {
+    if (threadsMenu.hidden) return
+    if (threadsMenu.contains(event.target) || threadsButton.contains(event.target)) return
+    closeMenu()
+  })
+  flameButton.addEventListener('click', () => {
+    flame = !flame
+    flameExplicit = true
+    applyFlame()
+    if (childId !== null) rememberThread(childId, '')
+    setHint(flame ? '即用即焚已开：关闭窗口即删除这段记录' : '已改为保留记录', false)
+  })
+
+  const jumpButton = document.getElementById('jump')
+  function syncJump() {
+    jumpButton.hidden = nearBottom()
+  }
+  log.addEventListener('scroll', syncJump)
+  jumpButton.addEventListener('click', () => {
+    log.scrollTo({ top: log.scrollHeight, behavior: 'smooth' })
+  })
+
+  document.getElementById('send').addEventListener('click', () => { void send() })
+  /** 输入框随内容长高，到 max-height 后内部滚动（DSH 输入框同样的行为）。 */
+  function growInput() {
+    input.style.height = 'auto'
+    input.style.height = Math.min(input.scrollHeight, 132) + 'px'
+  }
+  /** 统一的发送键可用态：空输入或正在发送时收起强调色。 */
+  function syncSend() {
+    sendButton.disabled = busy || input.value.trim() === ''
+  }
+
+  input.addEventListener('input', growInput)
+  input.addEventListener('input', syncSend)
+
+  input.addEventListener('keydown', (event) => {
+    // 输入法合成期间（拼音候选未上屏）不能抢 Enter：那会把没写完的字直接发出去，
+    // 也是候选框被中断的常见原因。
+    if (event.isComposing === true || event.keyCode === 229) return
+    if (event.key === 'Enter' && event.shiftKey !== true) {
+      event.preventDefault()
+      void send()
+    }
+  })
+
+  /** Called by the native window's ＋ button: drop the stored thread and start fresh. */
+  window.__DSH_FLOAT_NEW_THREAD__ = () => { void startFreshThread(); return true }
+
+  document.getElementById('btn-new').addEventListener('click', () => { void startFreshThread() })
+
+  /** Start a fresh side conversation, burning the previous one when ephemeral. */
+  async function startFreshThread() {
+    burnCurrentIfEphemeral()
+    localStorage.removeItem(THREAD_KEY)
+    childId = null
+    resetLog()
+    refreshThreadOptions()
+    setHint('已开启新的侧边对话', false)
+    input.focus()
+  }
+
+  const bridge = window.dshFloatWindow
+  pinButton.addEventListener('click', () => {
+    const pinned = pinButton.getAttribute('aria-pressed') !== 'true'
+    pinButton.setAttribute('aria-pressed', pinned ? 'true' : 'false')
+    pinButton.title = pinned ? '取消置顶' : '置顶'
+    if (bridge !== undefined) void bridge.setPinned(pinned)
+  })
+  document.getElementById('btn-min').addEventListener('click', () => {
+    if (bridge !== undefined) void bridge.minimize()
+  })
+  document.getElementById('btn-close').addEventListener('click', () => {
+    if (bridge !== undefined) bridge.close()
+    else window.close()
+  })
+
+  async function boot() {
+    applyFlame()
+    refreshThreadOptions()
+    syncSend()
+    syncJump()
+    void loadParentTitle()
+    hostLog('page loaded; parent=' + parentSessionId + ' child=' + String(childId))
+    if (childId === null && await attachStored()) setHint('已接回上一次的侧边对话', false)
+    try {
+      await poll()
+      setPulse('idle')
+    } catch (error) {
+      setHint(String(error.message ?? error), true)
+    }
+    setInterval(() => {
+      poll().catch((error) => {
+        setPulse('error')
+        setHint(String(error.message ?? error), true)
+      })
+    }, POLL_MS)
+    input.focus()
+  }
+
+  void boot()
+})()
+
+  </script>
+</body>
+</html>

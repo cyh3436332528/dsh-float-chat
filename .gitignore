@@ -1,0 +1,80 @@
+# ══════════════════════════════════════════════════════════════════════════
+#  ⛔ 最重要的一段：window/ 下的运行时数据（含 DSH 认证 cookie，绝不入库）
+# ══════════════════════════════════════════════════════════════════════════
+#
+# window/webview-data/ 是内嵌浏览器（WebView2）的 profile 目录，其中有：
+#   · EBWebView/Default/Network/      → DSH 的认证 cookie
+#   · EBWebView/Default/Local Storage/ → 侧边对话 id 与浮窗状态
+# 一旦提交上去就是凭据泄露。**这一行不要删。**
+window/webview-data/
+
+# 窗口进程的运行时状态（本机路径、几何、欠清标记、本机设置）
+window/window-log.txt
+window/window-log.1.txt
+window/window-log.2.txt
+window/window-state.txt
+window/clean-pending.txt
+window/float-settings.json
+
+# 宿主半写设置时的临时文件（tmp + rename 的中间态）
+window/float-settings.json.tmp
+
+# ══════════════════════════════════════════════════════════════════════════
+#  常规忽略
+# ══════════════════════════════════════════════════════════════════════════
+
+# ---- 依赖 ----
+node_modules/
+.pnpm-store/
+
+# ---- 编译中间产物（window/ 的 .exe 与 lib/*.dll 是**有意入库**的，不要忽略）----
+work/
+*.pdb
+*.obj
+
+# ---- 日志 ----
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---- 环境与密钥 ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+
+# ---- 编辑器 / IDE ----
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+
+# ---- 操作系统 ----
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# ---- 临时 / 打包产物 ----
+tmp/
+temp/
+*.tgz
+*.zip
+
+# ---- DSH 运行时数据 ----
+.dsh/
+**/sessions/
+**/session_projcache/

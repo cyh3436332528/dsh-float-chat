@@ -1,0 +1,124 @@
+name: Bug 报告
+description: 报告一个可复现的问题
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。请尽量把信息填全——**这个插件横跨三种运行环境**
+        （DSH 宿主进程 / DSH 渲染器 / 独立的 WinForms 窗口进程），
+        缺了版本信息基本无法定位问题。
+
+        > ⚠️ 如果你的窗口里出现了**别人的对话内容**，或者你怀疑**认证凭据泄露了**，
+        > 请**先停下手上的操作**，不要公开粘贴日志，改走
+        > [SECURITY.md](../SECURITY.md) 里的私密渠道。
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已经搜索过现有 Issue，确认没有人报告过同样的问题
+          required: true
+        - label: 我已经读过 README 的「FAQ」与「已知限制」，我的问题不在其中
+          required: true
+        - label: 我确认我没有在 DSH Web 版上使用本插件（本插件依赖 Desktop 的渲染器能力头）
+          required: false
+
+  - type: input
+    id: plugin-version
+    attributes:
+      label: 插件版本
+      description: 见 `plugin/package.json` 的 `version`，或 Release 页面
+      placeholder: "0.4.0"
+    validations:
+      required: true
+
+  - type: input
+    id: dsh-version
+    attributes:
+      label: DSH 版本与形态
+      description: DSH 的版本号，以及你用的是 Desktop 还是 Web
+      placeholder: "例如 2.0.15 / Desktop"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Windows 版本与显示缩放
+      description: 显示缩放会影响 DPI 相关的表现，请一并给出
+      placeholder: "例如 Windows 11 26100 / 150%"
+    validations:
+      required: true
+
+  - type: input
+    id: webview2
+    attributes:
+      label: WebView2 Runtime 版本
+      description: "窗口启动时 `window/window-log.txt` 里的 `webview environment created` 那一行给出的版本号"
+      placeholder: "例如 153.0.4234.48"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: entry
+    attributes:
+      label: 出问题的入口
+      options:
+        - 输入框右侧的「浮窗」按钮（打不开窗口）
+        - 悬浮窗本体（窗口行为、外观、标题栏按钮）
+        - 窗口里的侧边对话（收发消息、历史对话、即用即焚）
+        - 设置 → 悬浮窗（设置不生效、页面报错）
+        - 设置 → 悬浮窗 → 缓存与日志（清理）
+        - 插件安装 / 启用 / 卸载本身
+        - 其他（在描述里说明）
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 问题描述
+      description: 发生了什么？你期望发生什么？
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      description: 请写清每一步，越具体越好
+      placeholder: |
+        1. 打开 DSH Desktop，进入会话 ...
+        2. 点输入框右侧的「浮窗」
+        3. 观察到 ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 相关日志
+      description: |
+        `window/window-log.txt` 中相关的行（页面侧的状态也会写进这里，搜 `page:` 与 `theme ->`）。
+
+        **粘贴前请务必删掉：**
+        - `--dsh-auth-url=` 里 `token=` 后面的值
+        - `--dsh-header-value=` 后面的整串值
+        - 路径里的 Windows 用户名
+        - 任何 `session-...` 形式的会话 id
+
+        另外，DSH 宿主日志中与 `dsh-float-chat` 相关的行（搜关键词 `dsh-float-chat`）。
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: 补充信息
+      description: 截图、屏录、或任何你认为有用的上下文。**截图前请检查窗口里有没有隐私内容。**
+    validations:
+      required: false
