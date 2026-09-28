@@ -54,6 +54,17 @@ DSH 的侧边对话（side chat）只能待在 DSH 主窗口里。一旦你切�
 > **TODO**：还缺两张，欢迎按 `docs/assets/README.md` 的说明补充——
 > 输入框右侧的「浮窗」按钮、以及 设置 → 悬浮窗 的设置页。
 
+### 实机演示
+
+一段在真实桌面上录制的演示：从 DSH 主窗口点开浮窗、切到别的应用确认它仍然压在最上层、
+在浮窗里继续对话、最后从设置页改外观与不透明度。
+
+<video src="https://github.com/cyh3436332528/dsh-float-chat/releases/download/v0.4.0/dsh-float-chat-demo.mp4"
+       controls width="100%"></video>
+
+> 若上面的播放器没有渲染，可直接下载：
+> [**dsh-float-chat-demo.mp4**](https://github.com/cyh3436332528/dsh-float-chat/releases/download/v0.4.0/dsh-float-chat-demo.mp4)（约 19 MB）
+
 ## 核心特性
 
 ### 悬浮窗本体
