@@ -320,25 +320,32 @@ PR 必须附带：
       "immediately": true,
       "inject": ["@deepseek-ai/dsh-client-ui-conversation"]   // 硬依赖：提供 input.right 插槽
     }
-    // TODO: 补上 compatibility 段
   }
 }
 ```
 
-> **TODO（当前版本的缺口）**：本插件**尚未**声明 `dsh.compatibility`。
-> 社区通行做法是同时给出「最小 DSH 版本」与一份逐版本实测结论表，形如：
->
-> ```jsonc
-> "compatibility": {
->   "dsh": ">=2.0.0",
->   "dshReleases": {
->     "2.0.15": "compatible"
->   }
-> }
-> ```
->
-> 字段名与取值请以你所使用的 DSH 版本里 `@deepseek-ai/dsh-*` 包的实际声明为准，
-> **不要**照抄本示例里的版本号。
+<a id="about-dshcompatibility"></a>
+
+### 关于 `dsh.compatibility` {#关于-dshcompatibility}
+
+**这个字段不存在，不要加。** 早先的文档把它列为「待补的缺口」，那是错的。
+
+【事实】实测 DSH Desktop 2.0.15（`Program Files/DSH Desktop/resources/app/lib/`）：
+
+- 穷举 `lib/*.js` 里全部对 `dsh.*` 的读取，只有两处 ——
+  `bundleManifest.dsh?.bundle`（`lib/profile-B8k_aHEa.js:701`）与 `dsh?.profile`（同文件 `:680`）。
+  **插件清单里没有任何被消费的版本区间字段**，写了也不会被读。
+- 搜索到的 `compatibility` 在另一个位置：`dsh-community-market` 包的
+  **目录条目 schema**（该包 `docs/schemas/catalog-provider-page.schema.json`），
+  形状为 `{ "apiVersion": string, "hosts": string[] }`。它描述的是**市场目录里的一条记录**，
+  由目录提供方生成，插件作者既不该也不能在 `package.json` 里填写。
+
+所以本插件的兼容性**只能**靠人工实测维护。`package.json` 里那两块 `dsh` 配置
+是全部契约，改它们要格外谨慎。
+
+> 如果你在别的 DSH 版本里确实见到了 `dsh.compatibility` 被消费的证据
+> （比如解析它的代码路径），请开 Issue 附上文件与行号 —— 那说明上游加了新字段，
+> 本文档需要更新。**不要凭印象或网上的示例片段就往 `package.json` 里加。**
 
 ## 安全
 

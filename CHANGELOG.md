@@ -16,10 +16,14 @@
 
 ### TODO
 
-- 补充 `docs/assets/` 下的真实效果截图（当前 README 的截图区是注释占位）。
-- 为 `plugin/package.json` 补充 `dsh.compatibility` 字段，声明支持的 DSH 版本区间。
+- 补充 `docs/assets/01-composer-button.png`——唯一还缺的一张截图（悬浮窗已收 4 张）。
 - 为宿主侧路由补自动化测试（当前**没有**任何自动化测试）。
 - 为 macOS / Linux 提供窗口实现或明确的替代方案（当前**仅 Windows**）。
+
+### 注
+
+- ~~补充 `dsh.compatibility` 字段~~ —— **作废**。该字段不存在于 DSH 的插件清单中，
+  写了也不会被读；详见 [CONTRIBUTING.md](./CONTRIBUTING.md#关于-dshcompatibility)。
 
 ---
 
@@ -164,7 +168,8 @@
 - **清理清理不到正被浏览器占用的缓存目录**，只能延后到关窗后 / 下次启动时补清。
 - **`window-log.txt` 会记录带 token 的认证 URL 与渲染器能力头值**——
   上报问题前请先删掉，详见 README 的「风险提示」。
-- **`package.json` 缺少 `dsh.compatibility` 声明**，没有机器可读的版本区间。
+- **没有机器可读的 DSH 版本约束**——DSH 插件清单只认 `dsh.bundle` 与 `dsh.profile`，
+  不存在可声明版本区间的字段，兼容性只能靠人工实测。
 - **无自动化测试。** 全部结论来自手工实测。
 - `dsh.client.inject` 依赖 `@deepseek-ai/dsh-client-ui-conversation`，
   该包版本变化可能影响「浮窗」按钮的挂载。

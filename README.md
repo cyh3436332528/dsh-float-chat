@@ -18,7 +18,7 @@
 
 ![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)
 
-[简体中文](./README.md) · [安装](#安装) · [使用](#使用) · [配置项](#配置项) · [FAQ](#faq)
+[简体中文](./README.md) · [English](./README.en.md) · [安装](#安装) · [使用](#使用) · [配置项](#配置项) · [FAQ](#faq)
 
 </div>
 
@@ -185,8 +185,11 @@ DSH 的侧边对话（side chat）只能待在 DSH 主窗口里。一旦你切�
 > 除窗口进程外，其余部分（宿主路由、设置存储、浏览器半边）都是纯 Node / 纯浏览器代码，  
 > 但**没有窗口就等于没有这个插件**，所以整体按「仅 Windows」提供。
 >
-> **兼容性声明的现状（如实说明）**：`package.json` 目前**没有** `dsh.compatibility` 字段，  
-> 因此**没有以机器可读的形式**声明支持的 DSH 版本区间。上表是人工实测结论，范围仅限 DSH Desktop 2.0.15。
+> **关于兼容性声明**：`package.json` **无法**声明 DSH 版本区间 ——
+> 这不是本项目的疏漏，而是 DSH 的插件清单里**根本不存在**这样的字段。
+> 实测 DSH Desktop 2.0.15 只消费 `dsh.bundle` 与 `dsh.profile` 两个 `dsh.*` 字段，
+> 插件侧没有任何机器可读的版本约束机制。因此上方兼容性表是**人工实测结论**，
+> 范围仅限 DSH Desktop 2.0.15；详见 [CONTRIBUTING.md](./CONTRIBUTING.md#关于-dshcompatibility)。
 
 ## 安装
 
@@ -354,11 +357,9 @@ dsh plugin --profile desktop remove dsh-float-chat
    其中**确实包含带 token 的 URL**（形如 `--dsh-auth-url=http://127.0.0.1:<port>/?token=…`）  
    与渲染器能力头值。**上报问题时请先把这些值删掉。**  
    日志文件同样已被 `.gitignore` 排除。
-
-
-1. **`window/webview-data/` 会持续变大。** 实测它自己会长到约 **165 MB**（其中 `Cache` 约 133 MB、  
+5. **`window/webview-data/` 会持续变大。** 实测它自己会长到约 **165 MB**（其中 `Cache` 约 133 MB、  
    `Code Cache` 约 21 MB）。想回收就用标题栏 `⌫` 或设置页里的 **清理**。
-2. **窗口进程会继承宿主环境变量。** 唯一被显式删除的是 `ELECTRON_RUN_AS_NODE`  
+6. **窗口进程会继承宿主环境变量。** 唯一被显式删除的是 `ELECTRON_RUN_AS_NODE`  
    （不删的话，子进程会被当成 Node 而不是窗口）。
 
 ### 清理范围一览
@@ -446,7 +447,8 @@ v0.4.0 之前它叫 `index.js`，后来改的名。原因是 DSH 的宿主插件
 - **同一个插件只有一个浮窗进程。** 再次点「浮窗」不会开第二个窗口。
 - **窗口的对话索引存在窗口自己的 `localStorage` 里**，最多记 20 条，且不等于 DSH 的会话列表；  
   清掉 `webview-data/` 就会丢这个索引（对话本身还在 DSH 侧）。
-- **`package.json` 缺少 `dsh.compatibility` 声明。** 目前没有机器可读的版本区间。
+- **没有机器可读的 DSH 版本约束。** DSH 的插件清单只认 `dsh.bundle` 与 `dsh.profile`，
+  不存在可写版本区间的字段，所以兼容性只能靠人工实测（见 [兼容性](#兼容性)）。
 - **无自动化测试。** 全部结论来自手工实测。
 - **`dsh.client.inject` 依赖 `@deepseek-ai/dsh-client-ui-conversation`**，该包版本变化可能影响按钮挂载。
 - **日志会记录带 token 的 URL 与渲染器能力头值**（见 [风险提示](#风险提示) 第 4 条）。
@@ -474,11 +476,13 @@ dsh-float-chat/
 │       ├── clean-pending.txt  #   欠清标记
 │       └── float-settings.json#   本机设置
 ├── docs/
-│   ├── assets/                #   效果截图（当前为 TODO 占位）
+│   ├── assets/                #   效果截图（悬浮窗 2 张 + 设置页 2 张）
 │   └── plugin-blurb.md        #   简介 / 关键词 / Topics / 徽章素材
 ├── release/
 │   ├── v0.4.0-release-notes.md        # Release 说明、tag 方案、投稿文案
 │   └── awesome-dsh-plugin-entry.yml   # 插件市场收录用的条目文件
+├── README.md                  #   中文说明（本文件）
+├── README.en.md               #   英文说明
 └── .github/                   # Issue / PR 模板
 ```
 

@@ -6,7 +6,9 @@
 
 请使用 GitHub 的私密渠道：
 
-👉 [提交安全公告](https://github.com/cyh3436332528/dsh-float-chat/security/advisories/new)
+👉 **<https://github.com/cyh3436332528/dsh-float-chat/security>** → *Report a vulnerability*
+
+（直达链接：<https://github.com/cyh3436332528/dsh-float-chat/security/advisories/new>）
 
 在公告中请包含：
 

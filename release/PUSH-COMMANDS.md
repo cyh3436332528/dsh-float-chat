@@ -227,7 +227,7 @@ dsh plugin --profile desktop add ./plugin
 - 仅 Windows；DSH Web 版不能完整工作。
 - 宿主半边**不热重载**，改 `host.js` 必须重启 DSH Desktop。
 - 同一个插件**只有一个浮窗进程**，重复点「浮窗」不会开第二个窗口。
-- `package.json` 缺少 `dsh.compatibility` 声明（没有机器可读的版本区间）。
+- 没有机器可读的 DSH 版本约束（DSH 插件清单里不存在这样的字段，非本项目疏漏）。
 - **无自动化测试。**
 - `dsh.client.inject` 依赖 `@deepseek-ai/dsh-client-ui-conversation`，
   该包版本变化可能影响「浮窗」按钮的挂载。
@@ -374,7 +374,7 @@ Pops the DSH side chat into a free-floating, always-on-top Windows desktop windo
 
 - **仅支持 Windows**（窗口是 WinForms + WebView2 程序），且依赖 **DSH Desktop**
   （需要 Desktop 外壳的逐代渲染器能力头）；
-- 「已知限制」一节如实列出了当前的全部不足，包括缺少 `dsh.compatibility` 声明、
+- 「已知限制」一节如实列出了当前的全部不足，包括没有机器可读的 DSH 版本约束、
   宿主半边不热重载、无自动化测试；
 - 「风险提示」一节写明了清理会删哪些目录、`webview-data/` 里存有什么。
 
@@ -402,5 +402,5 @@ README 的「兼容性」一节明确标注，避免用户装上后发现窗口�
      `01-composer-button.png`、`02-float-window.png`、`03-settings-page.png`、`04-title-bar.png`
    - 删掉 README 里 `<!--` 与 `-->` 这两行注释标记（其余内容已经写好，不用改）
    - 重新提交
-3. **补 `dsh.compatibility`**（当你想对外承诺版本区间时）。
-   字段位置与写法见 `CONTRIBUTING.md` 的「兼容性声明」一节。
+3. **（已作废）~~补 `dsh.compatibility`~~** —— 该字段不存在于 DSH 的插件清单中，
+   写了也不会被读。详见 `CONTRIBUTING.md` 的「关于 `dsh.compatibility`」一节。
