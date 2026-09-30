@@ -234,14 +234,29 @@ dsh plugin --profile desktop add github:cyh3436332528/dsh-float-chat
 > 仓库里的 `plugin/` 是**无构建步骤的纯 JavaScript**（无 TypeScript、无 `prepare` 脚本），  
 > 从 git 源码安装**不需要** pnpm 的 `allowBuilds` 构建授权。
 
+### 关于那两个 `package.json`
+
+本仓库有**两个**清单，职责不同，别把它们搞混：
+
+| 清单 | 角色 |
+| --- | --- |
+| **根 `package.json`** | **分发包**。上面那条 `add github:…` 装的就是它：`exports` 指向 `plugin/host.js`，`files` 把 `plugin/` 与 `window/` 一起打进去 |
+| `plugin/package.json` | **内层插件包**。供本地开发 `dsh plugin --profile desktop add ./plugin` 使用 |
+
+之所以必须有根清单：`host.js` 用 `../window/dsh-float-window.exe` 定位窗口程序
+（见 `host.js:33`），**`window/` 必须是 `plugin/` 的兄弟目录**。
+只有把两者一起纳入分发包，这个相对路径在安装后才成立——没有根清单时，
+`dsh plugin add github:…` 会在仓库根找不到任何清单，根本装不上。
+
 > [!IMPORTANT]  
-> **窗口进程必须和插件包放在一起。**  
-> `host.js` 通过两层查找定位 `dsh-float-window.exe`：先看包旁边的 `../window/`，  
-> 再从模块目录逐级向上最多 8 层找 `window/dsh-float-window.exe`（为的是兼容 profile 里  
+> **`window/` 必须随包发布，否则窗口起不来。**  
+> `host.js` 找 `dsh-float-window.exe` 的顺序是：先试包旁边的 `../window/`，  
+> 失败再从模块目录逐级向上最多 8 层找 `window/dsh-float-window.exe`（为兼容 profile 里  
 > `node_modules` 的 junction 加载）。
 >
-> 因此：**如果你手动把 `plugin/` 目录单独拷走安装，请连同同级的 `window/` 目录一起拷**，  
-> 否则点「浮窗」会报 `浮窗打开失败`。
+> - **走上面两条安装命令**：不用操心。`files` 已把 `plugin/` 与 `window/` 一起打包
+>   （用 `npm pack` 实测：共 15 个文件，含 6 个 `window/` 文件）。  
+> - **手动把 `plugin/` 目录单独拷走**：请连同同级的 `window/` 一起拷，否则点「浮窗」会报 `浮窗打开失败`。
 
 ### 卸载
 
@@ -461,14 +476,15 @@ v0.4.0 之前它叫 `index.js`，后来改的名。原因是 DSH 的宿主插件
 
 ```
 dsh-float-chat/
-├── plugin/                    ← 插件包本体（dsh plugin add 安装的就是它）
-│   ├── package.json           #   清单：exports → ./host.js、dsh.bundle、dsh.client
+├── package.json               #   ⭐ 分发包清单：exports → plugin/host.js，files 纳入 plugin/ + window/
+├── plugin/                    ← 插件包本体
+│   ├── package.json           #   内层清单（本地开发 add ./plugin 用）
 │   ├── cordis.patch.yml       #   bundle 层：往 profile 插入一条 host 记录（必须保留）
 │   ├── host.js                #   宿主半边：5 条路由 + 拉起窗口进程（v0.4.0 前叫 index.js）
 │   ├── client.js              #   浏览器半边：浮窗按钮 + 悬浮窗设置页 + 导航图标
 │   └── page/
 │       └── float.html         #   窗口页面：侧边聊天 UI + 与窗口进程的桥
-├── window/                    ← 原生窗口（WinForms + WebView2）
+├── window/                    ← 原生窗口（WinForms + WebView2），必须是 plugin/ 的兄弟目录
 │   ├── src/FloatWindow.cs     #   窗口源码（约 2041 行，csc C# 5）
 │   ├── dsh-float-window.exe   #   ⚠️ 已入库的预编译产物
 │   ├── lib/*.dll              #   ⚠️ 已入库的三个 WebView2 DLL
@@ -479,6 +495,7 @@ dsh-float-chat/
 │       ├── window-state.txt   #   窗口几何
 │       ├── clean-pending.txt  #   欠清标记
 │       └── float-settings.json#   本机设置
+├── screenshots.json           #   市场卡片用的截图清单（路径相对本文件）
 ├── docs/
 │   ├── assets/                #   效果截图（触发入口 1 张 + 悬浮窗 2 张 + 设置页 2 张）
 │   └── plugin-blurb.md        #   简介 / 关键词 / Topics / 徽章素材

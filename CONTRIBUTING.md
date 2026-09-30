@@ -109,8 +109,11 @@ C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe ^
 ## 代码结构
 
 ```
-plugin/                      # 插件包本体（dsh plugin add 安装的就是它）
-├── package.json             # 清单：exports、dsh.bundle、dsh.client
+package.json                 # ⭐ 分发包清单：exports → plugin/host.js，files 纳入 plugin/ + window/
+screenshots.json             # 市场卡片截图清单
+
+plugin/                      # 插件包本体
+├── package.json             # 内层清单：exports、dsh.bundle、dsh.client（本地开发用）
 ├── cordis.patch.yml         # bundle 层：往 profile 插入一条 host 记录
 ├── host.js                  # 宿主半边：5+2 条路由 + 拉起窗口进程
 ├── client.js                # 浏览器半边：浮窗按钮 + 悬浮窗设置页 + 导航图标
@@ -129,6 +132,43 @@ window/                      # 原生窗口（WinForms + WebView2）
 > **与 `dsh-plugin-session-purge` 的结构差异**：那个插件的包是 `plugin/lib/{index.js,client.js}`
 > 的两层结构；本插件是**扁平结构**（`host.js` / `client.js` 直接放在包根），
 > 并额外带一个同级的 `window/` 目录。
+
+### 为什么有两个 `package.json`
+
+根清单是**分发包**，`plugin/package.json` 是**内层包**。这不是冗余，是被下面的约束逼出来的：
+
+`host.js:33` 用相对路径定位窗口程序：
+
+```js
+const WINDOW_BIN = fileURLToPath(new URL('../window/dsh-float-window.exe', import.meta.url))
+```
+
+**`../window/` 要求 `window/` 是 `plugin/` 的兄弟目录。** 而 `dsh plugin add github:owner/repo`
+只接受仓库根作为包——根部没有清单就直接失败，只打 `plugin/` 又会丢掉 `window/`。
+所以根清单承担「把两者一起打包」这件事：
+
+```jsonc
+// package.json（根）
+{
+  "exports": { ".": "./plugin/host.js", "./client": "./plugin/client.js" },
+  "files": ["plugin/", "window/", "README.md", "README.en.md", "LICENSE"],
+  "dsh": { "bundle": { "patch": "./plugin/cordis.patch.yml" }, "client": { /* 同 plugin/ */ } }
+}
+```
+
+> [!CAUTION]
+> **改 `files` 时务必确认 `window/` 还在里面。** 漏掉它，安装后窗口起不来，
+> 而症状只是点「浮窗」报 `浮窗打开失败` —— 排查方向容易被带偏到「exe 没编译」上去。
+> 改动 `files` 或 `exports` 后请实测一次打包清单：
+>
+> ```bash
+> npm pack --dry-run --json | grep -c '"path": "window/'
+> ```
+>
+> 期望值 **6**（`.exe`、3 个 DLL、`src/FloatWindow.cs`、`app.manifest`）。
+
+**根清单与 `plugin/package.json` 的 `dsh` 段必须保持一致**——这是第 5 组需要同步的地方
+（另四组见下方「两份必须同步的常量」）。
 
 ### 为什么 `.exe` 和 DLL 要入库
 

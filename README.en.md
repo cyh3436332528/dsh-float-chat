@@ -210,14 +210,30 @@ dsh plugin --profile desktop add github:cyh3436332528/dsh-float-chat
 > The `plugin/` directory is **plain JavaScript with no build step** (no TypeScript, no `prepare` script),
 > so installing from git source does **not** require pnpm's `allowBuilds` authorization.
 
+### About the two `package.json` files
+
+This repository has **two** manifests with different jobs — don't confuse them:
+
+| Manifest | Role |
+| --- | --- |
+| **Root `package.json`** | The **distribution package**. The `add github:…` command above installs this one: its `exports` point at `plugin/host.js`, and its `files` pulls in both `plugin/` and `window/` |
+| `plugin/package.json` | The **inner plugin package**, used by local development via `dsh plugin --profile desktop add ./plugin` |
+
+The root manifest has to exist because `host.js` locates the window program at
+`../window/dsh-float-window.exe` (see `host.js:33`) — **`window/` must be a sibling of `plugin/`**.
+Only shipping both together makes that relative path resolve after installation. Without the root
+manifest, `dsh plugin add github:…` finds no manifest at the repository root and cannot install at all.
+
 > [!IMPORTANT]
-> **The window process must travel with the plugin package.**
-> `host.js` locates `dsh-float-window.exe` in two ways: it first looks for `../window/` beside the package,
-> then walks up to 8 levels from the module directory looking for `window/dsh-float-window.exe` (to stay
+> **`window/` must ship with the package, or the window will not start.**
+> `host.js` looks for `dsh-float-window.exe` in this order: first `../window/` beside the package,
+> then walking up to 8 levels from the module directory for `window/dsh-float-window.exe` (to stay
 > compatible with `node_modules` junction loading inside a profile).
 >
-> So: **if you copy `plugin/` somewhere on its own, copy the sibling `window/` directory too** —
-> otherwise clicking 浮窗 reports `浮窗打开失败`.
+> - **Using either install command above**: nothing to do — `files` already packs `plugin/` and `window/`
+>   together (verified with `npm pack`: 15 files, 6 of them under `window/`).
+> - **Copying the `plugin/` directory somewhere on its own**: copy the sibling `window/` too —
+>   otherwise clicking 浮窗 reports `浮窗打开失败`.
 
 ### Uninstall
 
@@ -435,14 +451,15 @@ The name is intentional — do not change it back. See [CHANGELOG.md](./CHANGELO
 
 ```
 dsh-float-chat/
-├── plugin/                    ← the plugin package (this is what dsh plugin add installs)
-│   ├── package.json           #   manifest: exports → ./host.js, dsh.bundle, dsh.client
+├── package.json               #   ⭐ distribution manifest: exports → plugin/host.js, files pulls in plugin/ + window/
+├── plugin/                    ← the plugin package
+│   ├── package.json           #   inner manifest (for local dev via add ./plugin)
 │   ├── cordis.patch.yml       #   bundle layer: inserts a host record into the profile (must be kept)
 │   ├── host.js                #   host half: 5 routes + spawns the window process (was index.js before v0.4.0)
 │   ├── client.js              #   browser half: 浮窗 button + 悬浮窗 settings page + nav icon
 │   └── page/
 │       └── float.html         #   window page: side-chat UI + bridge to the window process
-├── window/                    ← the native window (WinForms + WebView2)
+├── window/                    ← the native window (WinForms + WebView2); must be a sibling of plugin/
 │   ├── src/FloatWindow.cs     #   window source (~2041 lines, csc C# 5)
 │   ├── dsh-float-window.exe   #   ⚠️ prebuilt artifact, committed
 │   ├── lib/*.dll              #   ⚠️ three WebView2 DLLs, committed
@@ -453,6 +470,7 @@ dsh-float-chat/
 │       ├── window-state.txt   #   window geometry
 │       ├── clean-pending.txt  #   pending-clean marker
 │       └── float-settings.json#   local settings
+├── screenshots.json           #   storefront screenshot list (paths relative to this file)
 ├── docs/
 │   ├── assets/                #   screenshots (1 entry point + 2 of the float + 2 of the settings page)
 │   └── plugin-blurb.md        #   blurb / keywords / topics / badge material

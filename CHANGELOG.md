@@ -14,6 +14,28 @@
 
 ## [Unreleased]
 
+### Added
+
+- **根 `package.json`（分发包清单）** —— 仓库根此前没有清单，导致 README 里的免克隆安装命令
+  `dsh plugin --profile desktop add github:cyh3436332528/dsh-float-chat`
+  **实际无法工作**（根部找不到清单）。新增的根清单把 `exports` 指向 `plugin/host.js`，
+  并用 `files` 把 `plugin/` 与 `window/` 一起纳入分发包。
+- **`screenshots.json`** —— 市场卡片用的截图清单，列出 `docs/assets/` 下 5 张图。
+
+### Fixed
+
+- **插件此前无法从 GitHub 安装。** 两条路都断：
+  - `add github:cyh3436332528/dsh-float-chat` —— 根目录没有 `package.json`，装不上；
+  - `add github:…#path:/plugin` —— 只打包 `plugin/`，丢掉 `window/`，
+    `host.js:33` 的 `../window/dsh-float-window.exe` 落空，点「浮窗」报 `浮窗打开失败`。
+
+  根清单加入后，打包结果里 `plugin/` 与 `window/` 保持兄弟关系，相对路径成立。
+  用 `npm pack --dry-run` 实测：共 **15** 个文件，其中 `window/` 下 **6** 个
+  （`.exe`、3 个 DLL、`src/FloatWindow.cs`、`app.manifest`）。
+
+  > 本次只验证了**打包清单**；受网络与本机 profile 限制，**未**实际演练一次完整的
+  > `dsh plugin add github:…` 安装。首次按 README 安装若遇问题，请开 Issue。
+
 ### TODO
 
 - 为宿主侧路由补自动化测试（当前**没有**任何自动化测试）。
@@ -24,6 +46,7 @@
 - 截图已收齐 5 张（触发入口 / 浮窗整屏 / 浮窗近景 / 设置页上下半），无待补。
 - ~~补充 `dsh.compatibility` 字段~~ —— **作废**。该字段不存在于 DSH 的插件清单中，
   写了也不会被读；详见 [CONTRIBUTING.md](./CONTRIBUTING.md#关于-dshcompatibility)。
+- **版本号未动**：上述修复仍记在 `[Unreleased]` 下，是否为此切 `0.4.1` 由维护者决定。
 
 ---
 
