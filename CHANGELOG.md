@@ -24,6 +24,21 @@
 
 ### Fixed
 
+- **Desktop 形态下点「浮窗」没有任何反应。** 两层缺陷叠在一起（[#1](https://github.com/cyh3436332528/dsh-float-chat/issues/1)）：
+  - **`loopback origin required`**：`client.js` 把 `location.origin` 发给宿主，而 Desktop
+    外壳的主窗口加载的是自定义协议 `dsh-app://app/`，协议既不是 `http:` 也不是 `https:`，
+    `loopbackOrigin()` 必然返回 `undefined`，`open` 路由固定回 `400`。现在当调用者的
+    origin 过不了白名单时，回退到**宿主自身的回环 origin**（`ctx.webServer.port`）——
+    token URL 本来就由这一侧铸出，权威方是这个进程而不是调用者的 `location.origin`。
+    白名单保留，不会信任任意来源。
+  - **窗口进程崩在程序集加载**：三个 WebView2 DLL 在 `window/lib/` 下，而 .NET Framework
+    的 CLR 默认只在 exe 同目录探测程序集，仓库里又没有 `.config`，于是
+    `FloatWindowForm..ctor` 抛 `System.IO.FileNotFoundException`（`Microsoft.Web.WebView2.WinForms`）
+    后进程直接退出。因为崩溃只写进 `window/window-log.txt`、界面上毫无提示，症状就是
+    「点了没反应」。新增 `window/dsh-float-window.exe.config`，用
+    `<probing privatePath="lib" />` 把 `lib/` 纳入探测路径；DLL 不必挪位置，`FloatWindow.cs`
+    也不必重新编译，CLR 每次启动 exe 都读该文件，故无需重启 DSH。
+
 - **插件此前无法从 GitHub 安装。** 两条路都断：
   - `add github:cyh3436332528/dsh-float-chat` —— 根目录没有 `package.json`，装不上；
   - `add github:…#path:/plugin` —— 只打包 `plugin/`，丢掉 `window/`，
