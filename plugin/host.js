@@ -253,6 +253,17 @@ function sendJson(res, status, value) {
   res.end(body)
 }
 
+/**
+ * This Host's own loopback origin, or `undefined` while the web server is not
+ * listening yet. The token URL is minted by this process, so the origin that
+ * matters is this one — not the caller's `location.origin`.
+ */
+function selfLoopbackOrigin(ctx) {
+  const port = ctx.webServer === undefined ? undefined : ctx.webServer.port
+  if (!Number.isInteger(port) || port <= 0) return undefined
+  return loopbackOrigin(`http://127.0.0.1:${String(port)}`)
+}
+
 /** Only loopback origins may be handed a token URL. */
 function loopbackOrigin(value) {
   if (typeof value !== 'string' || value === '') return undefined
@@ -381,7 +392,13 @@ export function apply(ctx) {
           sendJson(res, 400, { ok: false, error: 'invalid body' })
           return
         }
-        const origin = loopbackOrigin(body.origin)
+        // The Desktop shell serves its own document from the custom scheme
+        // `dsh-app://app`, so the composer button's `location.origin` can never
+        // pass the loopback check — in the Desktop form that 400 used to be
+        // unavoidable. The token URL is minted here anyway, so fall back to this
+        // process's own loopback origin; the whitelist stays, and no arbitrary
+        // origin is ever trusted.
+        const origin = loopbackOrigin(body.origin) ?? selfLoopbackOrigin(ctx)
         if (origin === undefined) {
           sendJson(res, 400, { ok: false, error: 'loopback origin required' })
           return
